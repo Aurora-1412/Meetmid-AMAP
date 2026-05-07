@@ -1,0 +1,31 @@
+# 环境变量（含 API Key，严禁提交）
+.env
+
+# Python 虚拟环境
+venv/
+.venv/
+env/
+
+# Python 编译缓存
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# 包管理
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log

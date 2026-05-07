@@ -1,0 +1,2163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>智能中间点餐厅推荐</title>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #FF6B35;
+      --primary-light: #FF8C5A;
+      --bg: #0F1117;
+      --surface: #1A1D26;
+      --surface2: #22263A;
+      --border: #2E3350;
+      --text: #E8EAF0;
+      --text2: #8B91A8;
+      --success: #4CAF50;
+      --info: #2196F3;
+      --radius: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                   "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 14px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+    .header .logo {
+      width: 32px; height: 32px;
+      background: var(--primary);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+    .header .subtitle { font-size: 12px; color: var(--text2); margin-left: 4px; }
+    .header .api-badge {
+      margin-left: auto;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      background: rgba(255,107,53,0.15);
+      color: var(--primary);
+      border: 1px solid rgba(255,107,53,0.3);
+    }
+    .header .api-badge.warn {
+      background: rgba(255,170,0,0.15);
+      color: #FFA500;
+      border-color: rgba(255,170,0,0.3);
+    }
+
+    /* ── Main Layout ── */
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Resizable Divider ── */
+    .divider {
+      width: 5px;
+      flex-shrink: 0;
+      background: var(--border);
+      cursor: col-resize;
+      position: relative;
+      z-index: 10;
+      transition: background 0.15s;
+      user-select: none;
+    }
+    .divider:hover, .divider.dragging {
+      background: var(--primary);
+    }
+    .divider::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 3px; height: 40px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.15);
+    }
+
+    /* ── Left Panel ── */
+    .panel {
+      width: 400px;
+      min-width: 280px;
+      max-width: 70vw;
+      flex-shrink: 0;
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Nearby Search Popup ── */
+    .nearby-popup {
+      position: fixed;
+      z-index: 1000;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+      width: 320px;
+      max-height: 480px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      animation: popupIn 0.15s ease;
+    }
+    @keyframes popupIn {
+      from { opacity:0; transform: scale(0.95) translateY(-4px); }
+      to   { opacity:1; transform: scale(1) translateY(0); }
+    }
+    .nearby-popup-header {
+      padding: 12px 14px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .nearby-popup-title {
+      font-size: 13px;
+      font-weight: 600;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .nearby-popup-close {
+      background: none; border: none; cursor: pointer;
+      color: var(--text2); font-size: 16px; padding: 2px 4px;
+      border-radius: 4px; line-height: 1;
+    }
+    .nearby-popup-close:hover { color: var(--text); background: var(--surface2); }
+    .nearby-search-row {
+      padding: 10px 12px;
+      display: flex; gap: 6px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .nearby-search-row input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 6px 10px;
+      outline: none;
+    }
+    .nearby-search-row input:focus { border-color: var(--primary); }
+    .nearby-quick-tags {
+      padding: 8px 12px 4px;
+      display: flex; flex-wrap: wrap; gap: 6px;
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .nearby-tag {
+      padding: 3px 9px;
+      border-radius: 12px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .nearby-tag:hover { border-color: var(--primary); color: var(--primary); }
+    .nearby-results {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+    .nearby-item {
+      padding: 9px 14px;
+      display: flex; gap: 10px; align-items: flex-start;
+      cursor: pointer;
+      transition: background 0.1s;
+      border-bottom: 1px solid rgba(46,51,80,0.5);
+    }
+    .nearby-item:last-child { border-bottom: none; }
+    .nearby-item:hover { background: var(--surface2); }
+    .nearby-item-dist {
+      font-size: 11px;
+      color: var(--primary);
+      font-weight: 700;
+      white-space: nowrap;
+      min-width: 38px;
+      margin-top: 1px;
+    }
+    .nearby-item-info { flex: 1; min-width: 0; }
+    .nearby-item-name {
+      font-size: 13px; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .nearby-item-addr {
+      font-size: 11px; color: var(--text2); margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .nearby-item-rating {
+      font-size: 11px; color: #FFB800; white-space: nowrap;
+    }
+    .nearby-empty {
+      padding: 24px;
+      text-align: center;
+      color: var(--text2);
+      font-size: 13px;
+    }
+    .nearby-loading {
+      padding: 20px;
+      text-align: center;
+      color: var(--text2);
+      font-size: 13px;
+    }
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .panel-content::-webkit-scrollbar { width: 4px; }
+    .panel-content::-webkit-scrollbar-track { background: transparent; }
+    .panel-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text2);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .card-title .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+    }
+    .dot-a { background: #4FC3F7; }
+    .dot-b { background: #FF8A65; }
+
+    /* ── Location Items ── */
+    .location-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .location-item:hover { border-color: var(--primary); }
+    .location-item.active {
+      border-color: var(--primary);
+      background: rgba(255,107,53,0.05);
+    }
+    .location-item .badge {
+      width: 24px; height: 24px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+      flex-shrink: 0;
+    }
+    .badge-a { background: rgba(79,195,247,0.2); color: #4FC3F7; }
+    .badge-b { background: rgba(255,138,101,0.2); color: #FF8A65; }
+    .location-item .loc-info { flex: 1; min-width: 0; }
+    .location-item .loc-name {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .location-item .loc-coords {
+      font-size: 11px;
+      color: var(--text2);
+      margin-top: 2px;
+    }
+    .location-item .loc-hint {
+      font-size: 12px;
+      color: var(--text2);
+      font-style: italic;
+    }
+    .location-item .clear-btn {
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: rgba(255,255,255,0.06);
+      color: var(--text2);
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .location-item .clear-btn:hover {
+      background: rgba(255,107,53,0.2);
+      color: var(--primary);
+    }
+
+    /* ── Search Dropdown ── */
+    .search-wrapper {
+      position: relative;
+      margin-bottom: 8px;
+    }
+    .search-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0; right: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      z-index: 500;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      display: none;
+    }
+    .search-dropdown.show { display: block; }
+    .dropdown-item {
+      padding: 9px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .dropdown-item:last-child { border-bottom: none; }
+    .dropdown-item:hover { background: rgba(255,107,53,0.08); }
+    .dropdown-item .di-name { font-weight: 500; color: var(--text); }
+    .dropdown-item .di-addr { font-size: 11px; color: var(--text2); }
+    .dropdown-empty {
+      padding: 10px 12px;
+      font-size: 13px;
+      color: var(--text2);
+      text-align: center;
+    }
+
+    /* ── Transport Preference ── */
+    .transport-pref {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .pref-btn {
+      padding: 5px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text2);
+      transition: all 0.2s;
+    }
+    .pref-btn:hover { border-color: var(--primary); color: var(--text); }
+    .pref-btn.active {
+      background: rgba(255,107,53,0.15);
+      border-color: var(--primary);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* ── Search Input ── */
+    .search-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 0;
+    }
+    .search-input {
+      flex: 1;
+      padding: 8px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus { border-color: var(--primary); }
+    .search-input::placeholder { color: var(--text2); }
+    .btn-small {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-light); }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text2);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--primary); color: var(--text); }
+
+    /* ── Query Box ── */
+    .query-area {
+      width: 100%;
+      min-height: 80px;
+      max-height: 120px;
+      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+      line-height: 1.5;
+    }
+    .query-area:focus { border-color: var(--primary); }
+    .query-area::placeholder { color: var(--text2); }
+
+    .query-examples {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .example-tag {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      background: rgba(255,107,53,0.1);
+      color: var(--primary);
+      border: 1px solid rgba(255,107,53,0.2);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .example-tag:hover { background: rgba(255,107,53,0.2); }
+
+    /* ── Submit Btn ── */
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      border-radius: var(--radius);
+      border: none;
+      background: linear-gradient(135deg, var(--primary), var(--primary-light));
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      letter-spacing: 0.3px;
+    }
+    .btn-submit:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(255,107,53,0.4);
+    }
+    .btn-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* ── Loading ── */
+    .loading-card {
+      display: none;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .loading-card.show { display: block; }
+    .loading-steps { list-style: none; }
+    .loading-step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 13px;
+      color: var(--text2);
+      transition: color 0.3s;
+    }
+    .loading-step.active { color: var(--text); }
+    .loading-step.done { color: var(--success); }
+    .step-icon {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      flex-shrink: 0;
+      background: var(--border);
+    }
+    .loading-step.active .step-icon {
+      background: var(--primary);
+      animation: pulse 1s infinite;
+    }
+    .loading-step.done .step-icon {
+      background: var(--success);
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Results Panel ── */
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .results-count {
+      font-size: 13px;
+      color: var(--text2);
+    }
+    .results-count span { color: var(--primary); font-weight: 600; }
+
+    /* ── Restaurant Card ── */
+    .restaurant-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .restaurant-card:hover, .restaurant-card.highlighted {
+      border-color: var(--primary);
+      background: rgba(255,107,53,0.04);
+    }
+    .restaurant-card:last-child { margin-bottom: 0; }
+    .restaurant-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .restaurant-name {
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .restaurant-rank {
+      width: 22px; height: 22px;
+      border-radius: 6px;
+      background: rgba(255,107,53,0.15);
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .restaurant-rank.rank-1 { background: rgba(255,215,0,0.2); color: #FFD700; }
+    .restaurant-rank.rank-2 { background: rgba(192,192,192,0.2); color: #C0C0C0; }
+    .restaurant-rank.rank-3 { background: rgba(205,127,50,0.2); color: #CD7F32; }
+    .restaurant-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .meta-tag {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--text2);
+    }
+    .meta-tag .icon { font-size: 13px; }
+    .rating-stars {
+      color: #FFB800;
+      font-size: 13px;
+    }
+    .rating-num {
+      color: var(--text);
+      font-weight: 600;
+    }
+    .restaurant-address {
+      font-size: 12px;
+      color: var(--text2);
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .transport-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .transport-item {
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .transport-a {
+      background: rgba(79,195,247,0.08);
+      border: 1px solid rgba(79,195,247,0.2);
+    }
+    .transport-b {
+      background: rgba(255,138,101,0.08);
+      border: 1px solid rgba(255,138,101,0.2);
+    }
+    .transport-label {
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .transport-a .transport-label { color: #4FC3F7; }
+    .transport-b .transport-label { color: #FF8A65; }
+    .transport-time {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .transport-detail {
+      color: var(--text2);
+      line-height: 1.3;
+    }
+    .transport-mode-icon { margin-right: 2px; }
+
+    /* ── Map ── */
+    #map {
+      flex: 1;
+      position: relative;
+    }
+
+    /* ── Map Tips ── */
+    .map-tip {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(15,17,23,0.9);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: var(--text);
+      white-space: nowrap;
+      z-index: 200;
+      pointer-events: none;
+      backdrop-filter: blur(8px);
+      display: none;
+    }
+    .map-tip.show { display: block; }
+    .map-tip .tip-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    /* ── Mode Selector (map click mode) ── */
+    .mode-bar {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 8px;
+      z-index: 200;
+    }
+    .mode-btn {
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: rgba(26,29,38,0.9);
+      color: var(--text2);
+      backdrop-filter: blur(8px);
+      transition: all 0.2s;
+    }
+    .mode-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .mode-btn:hover:not(.active) {
+      border-color: var(--primary);
+      color: var(--text);
+    }
+
+    /* ── Error toast ── */
+    .toast {
+      position: fixed;
+      top: 70px;
+      right: 20px;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      z-index: 9999;
+      max-width: 360px;
+      animation: slideIn 0.3s ease;
+      display: none;
+    }
+    .toast.error { background: #3D1515; border: 1px solid #7A2020; color: #FF8A8A; }
+    .toast.info { background: #0D2137; border: 1px solid #1A4A7A; color: #64B5F6; }
+    .toast.show { display: block; }
+    @keyframes slideIn {
+      from { transform: translateX(20px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    /* ── Divider ── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text2);
+      font-size: 12px;
+      margin: 4px 0;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center;
+      padding: 30px 20px;
+      color: var(--text2);
+    }
+    .empty-state .empty-icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state p { font-size: 13px; line-height: 1.6; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo">🍽️</div>
+  <h1>智能中间点推荐</h1>
+  <span class="subtitle">AI + 高德地图</span>
+  <div class="api-badge" id="apiStatusBadge">检测中...</div>
+</div>
+
+<!-- Main -->
+<div class="main" id="mainLayout">
+
+  <!-- Left Panel -->
+  <div class="panel" id="leftPanel">
+    <div class="panel-content" id="panelContent">
+
+      <!-- Location A -->
+      <div class="card">
+        <div class="card-title">
+          <span class="dot dot-a"></span>
+          地点 A（出发地）
+        </div>
+        <div class="search-wrapper">
+          <div class="search-row">
+            <input class="search-input" id="searchA"
+              placeholder="输入地址搜索，或点击地图选择..."
+              oninput="onSearchInput('A')"
+              onkeydown="if(event.key==='Enter') searchLocation('A')" />
+            <button class="btn-small btn-secondary" onclick="searchLocation('A')">搜索</button>
+          </div>
+          <div class="search-dropdown" id="dropdownA"></div>
+        </div>
+        <div class="location-item" id="locA" onclick="startMapClick('A')">
+          <div class="badge badge-a">A</div>
+          <div class="loc-info">
+            <div class="loc-name" id="locAName">未选择</div>
+            <div class="loc-coords" id="locACoords" style="display:none"></div>
+          </div>
+          <span class="loc-hint" id="locAHint">点击地图选择</span>
+        </div>
+      </div>
+
+      <!-- Location B -->
+      <div class="card">
+        <div class="card-title">
+          <span class="dot dot-b"></span>
+          地点 B（对方位置）
+        </div>
+        <div class="search-wrapper">
+          <div class="search-row">
+            <input class="search-input" id="searchB"
+              placeholder="输入地址搜索，或点击地图选择..."
+              oninput="onSearchInput('B')"
+              onkeydown="if(event.key==='Enter') searchLocation('B')" />
+            <button class="btn-small btn-secondary" onclick="searchLocation('B')">搜索</button>
+          </div>
+          <div class="search-dropdown" id="dropdownB"></div>
+        </div>
+        <div class="location-item" id="locB" onclick="startMapClick('B')">
+          <div class="badge badge-b">B</div>
+          <div class="loc-info">
+            <div class="loc-name" id="locBName">未选择</div>
+            <div class="loc-coords" id="locBCoords" style="display:none"></div>
+          </div>
+          <span class="loc-hint" id="locBHint">点击地图选择</span>
+        </div>
+      </div>
+
+      <!-- Query -->
+      <div class="card">
+        <div class="card-title">💬 需求描述</div>
+        <textarea class="query-area" id="queryInput"
+          placeholder="例如：找两地中间评分高的鲁菜餐厅&#10;或：找地铁方便、环境好的咖啡馆"></textarea>
+        <div class="query-examples">
+          <span class="example-tag" onclick="setExample('评分高的鲁菜餐厅')">🍲 鲁菜</span>
+          <span class="example-tag" onclick="setExample('好吃的北京烤鸭')">🦆 烤鸭</span>
+          <span class="example-tag" onclick="setExample('评分4.5以上的火锅')">🍜 火锅</span>
+          <span class="example-tag" onclick="setExample('环境好的日料')">🍣 日料</span>
+          <span class="example-tag" onclick="setExample('人均100以内的川菜')">🌶️ 川菜</span>
+          <span class="example-tag" onclick="setExample('精品咖啡馆')">☕ 咖啡</span>
+          <span class="example-tag" onclick="setExample('气氛好的酒吧')">🍺 酒吧</span>
+          <span class="example-tag" onclick="setExample('评分高的电影院')">🎬 电影院</span>
+          <span class="example-tag" onclick="setExample('评分好的KTV')">🎤 KTV</span>
+          <span class="example-tag" onclick="setExample('好吃的甜品店')">🧁 甜品</span>
+        </div>
+
+        <!-- A 出行方式 -->
+        <div style="display:flex;align-items:center;gap:6px;margin-top:14px;margin-bottom:6px;">
+          <div class="card-title" style="margin:0;">🔵 A 的出行方式</div>
+        </div>
+        <div class="transport-pref" id="prefA">
+          <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('A',this)">⚡ 最快</button>
+          <button class="pref-btn" data-mode="transit" onclick="setPrefAB('A',this)">🚇 地铁</button>
+          <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('A',this)">🚲 骑行</button>
+          <button class="pref-btn" data-mode="driving" onclick="setPrefAB('A',this)">🚗 驾车</button>
+          <button class="pref-btn" data-mode="walking" onclick="setPrefAB('A',this)">🚶 步行</button>
+        </div>
+
+        <!-- B 出行方式 -->
+        <div style="display:flex;align-items:center;gap:6px;margin-top:10px;margin-bottom:6px;">
+          <div class="card-title" style="margin:0;">🟠 B 的出行方式</div>
+        </div>
+        <div class="transport-pref" id="prefB">
+          <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('B',this)">⚡ 最快</button>
+          <button class="pref-btn" data-mode="transit" onclick="setPrefAB('B',this)">🚇 地铁</button>
+          <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('B',this)">🚲 骑行</button>
+          <button class="pref-btn" data-mode="driving" onclick="setPrefAB('B',this)">🚗 驾车</button>
+          <button class="pref-btn" data-mode="walking" onclick="setPrefAB('B',this)">🚶 步行</button>
+        </div>
+
+        <!-- 出发时间 -->
+        <div class="card-title" style="margin-top:12px;margin-bottom:6px;">🕐 出发时间</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="time" id="departureTime" value=""
+            style="flex:1;padding:7px 10px;background:var(--surface);border:1px solid var(--border);
+                   border-radius:8px;color:var(--text);font-size:13px;outline:none;cursor:pointer;"
+            onchange="onTimeChange(this)" />
+          <button class="btn-small btn-secondary" onclick="clearTime()" id="clearTimeBtn" style="display:none;">重置</button>
+        </div>
+        <div id="timeHint" style="font-size:11px;color:var(--text2);margin-top:5px;">
+          不填默认工作日中午 12:00（避免末班车问题）
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <button class="btn-submit" id="submitBtn" onclick="doSearch()" disabled>
+        <span id="submitIcon">🔍</span>
+        <span id="submitText">开始智能推荐</span>
+      </button>
+
+      <!-- Loading（多Agent进度）-->
+      <div class="loading-card" id="loadingCard">
+        <div class="card-title" style="margin-bottom:14px;">
+          <div class="spinner"></div>
+          <span id="loadingTitle">AI 正在分析...</span>
+        </div>
+        <ul class="loading-steps">
+          <li class="loading-step" id="step1">
+            <div class="step-icon">1</div>
+            Agent1 理解需求，提取搜索参数
+          </li>
+          <li class="loading-step" id="step2">
+            <div class="step-icon">2</div>
+            Agent2 计算中间区域，搜索候选地点
+          </li>
+          <li class="loading-step" id="step3">
+            <div class="step-icon">3</div>
+            按评分筛选排名（Python直接处理）
+          </li>
+          <li class="loading-step" id="step4">
+            <div class="step-icon">4</div>
+            A/B 分别计算最优路线（无LLM，纯API）
+          </li>
+          <li class="loading-step" id="step5">
+            <div class="step-icon">5</div>
+            Agent3 生成推荐文字
+          </li>
+        </ul>
+      </div>
+
+      <!-- Results -->
+      <div id="resultsSection" style="display:none;">
+        <!-- AI 总结 -->
+        <div class="card" id="summaryCard" style="display:none;margin-bottom:12px;">
+          <div class="card-title" style="margin-bottom:6px;">✨ AI 推荐理由</div>
+          <div id="summaryText" style="font-size:13px;line-height:1.7;color:var(--text2);"></div>
+        </div>
+
+        <div class="results-header">
+          <span class="card-title" style="margin-bottom:0;">📍 推荐地点</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="results-count">共 <span id="resultsCount">0</span> 个</span>
+            <select id="displayCountSelect"
+              onchange="onDisplayCountChange()"
+              style="
+                background:#1E2235;border:1px solid #2E3350;border-radius:6px;
+                color:#E8EAF0;font-size:12px;padding:3px 6px;cursor:pointer;
+                outline:none;
+              ">
+              <option value="5">显示5个</option>
+              <option value="10">显示10个</option>
+              <option value="15">显示15个</option>
+              <option value="20" selected>显示20个</option>
+            </select>
+          </div>
+        </div>
+        <div id="restaurantList"></div>
+
+        <!-- 重新计算路线 -->
+        <div class="card" id="recalcCard" style="margin-top:12px;">
+          <div class="card-title" style="margin-bottom:10px;">🔄 切换出行方式重算路线</div>
+          <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">
+            修改出行方式后点击"重新计算"，无需重新搜索
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:12px;color:#4FC3F7;margin-bottom:4px;">🔵 A 的出行方式</div>
+            <div class="transport-pref" id="recalcPrefA">
+              <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('A',this,'recalcPrefA')">⚡ 最快</button>
+              <button class="pref-btn" data-mode="transit" onclick="setPrefAB('A',this,'recalcPrefA')">🚇 地铁</button>
+              <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('A',this,'recalcPrefA')">🚲 骑行</button>
+              <button class="pref-btn" data-mode="driving" onclick="setPrefAB('A',this,'recalcPrefA')">🚗 驾车</button>
+              <button class="pref-btn" data-mode="walking" onclick="setPrefAB('A',this,'recalcPrefA')">🚶 步行</button>
+            </div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <div style="font-size:12px;color:#FF8A65;margin-bottom:4px;">🟠 B 的出行方式</div>
+            <div class="transport-pref" id="recalcPrefB">
+              <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('B',this,'recalcPrefB')">⚡ 最快</button>
+              <button class="pref-btn" data-mode="transit" onclick="setPrefAB('B',this,'recalcPrefB')">🚇 地铁</button>
+              <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('B',this,'recalcPrefB')">🚲 骑行</button>
+              <button class="pref-btn" data-mode="driving" onclick="setPrefAB('B',this,'recalcPrefB')">🚗 驾车</button>
+              <button class="pref-btn" data-mode="walking" onclick="setPrefAB('B',this,'recalcPrefB')">🚶 步行</button>
+            </div>
+          </div>
+          <button class="btn-submit" id="recalcBtn" onclick="recalcRoutes()"
+            style="padding:10px;font-size:14px;">
+            <span id="recalcBtnIcon">🔄</span>
+            <span id="recalcBtnText">重新计算路线</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Resizable Divider -->
+  <div class="divider" id="panelDivider"></div>
+
+  <!-- Map Container -->
+  <div id="map">
+    <div class="map-tip" id="mapTip">
+      <span class="tip-dot" id="tipDot"></span>
+      <span id="tipText">点击地图选择地点</span>
+    </div>
+    <div class="mode-bar" id="modeBar" style="display:none;">
+      <button class="mode-btn active" id="modeA" onclick="startMapClick('A')">
+        📍 选地点A
+      </button>
+      <button class="mode-btn" id="modeB" onclick="startMapClick('B')">
+        📍 选地点B
+      </button>
+      <button class="mode-btn" onclick="clearMapMode()">取消</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Nearby Search Popup -->
+<div class="nearby-popup" id="nearbyPopup" style="display:none;">
+  <div class="nearby-popup-header">
+    <span style="font-size:15px;">📍</span>
+    <span class="nearby-popup-title" id="nearbyPopupTitle">附近搜索</span>
+    <button class="nearby-popup-close" onclick="closeNearbyPopup()">✕</button>
+  </div>
+  <div class="nearby-search-row">
+    <input id="nearbyKeywordInput" placeholder="搜咖啡馆、书店、便利店…"
+      onkeydown="if(event.key==='Enter') doNearbySearch()" />
+    <button class="btn-small btn-primary" onclick="doNearbySearch()">搜索</button>
+  </div>
+  <div class="nearby-quick-tags" id="nearbyQuickTags">
+    <span class="nearby-tag" onclick="nearbyQuick('咖啡馆')">☕ 咖啡馆</span>
+    <span class="nearby-tag" onclick="nearbyQuick('书店')">📚 书店</span>
+    <span class="nearby-tag" onclick="nearbyQuick('便利店')">🏪 便利店</span>
+    <span class="nearby-tag" onclick="nearbyQuick('地铁站')">🚇 地铁站</span>
+    <span class="nearby-tag" onclick="nearbyQuick('停车场')">🅿️ 停车场</span>
+    <span class="nearby-tag" onclick="nearbyQuick('超市')">🛒 超市</span>
+    <span class="nearby-tag" onclick="nearbyQuick('药店')">💊 药店</span>
+    <span class="nearby-tag" onclick="nearbyQuick('银行ATM')">🏧 ATM</span>
+  </div>
+  <div class="nearby-results" id="nearbyResults">
+    <div class="nearby-empty">选择快捷标签或输入关键词搜索</div>
+  </div>
+</div>
+
+<!-- 高德地图 JS API（动态加载） -->
+<script>
+// ─────────────────────────────────────────────
+// 全局状态
+// ─────────────────────────────────────────────
+let map = null;
+let mapClickMode = null;  // 'A' | 'B' | null
+let markerA = null, markerB = null, markerMid = null;
+let restaurantMarkers = [];   // AMap.Marker 实例数组，与 allPoisData 下标对应
+let infoWindow = null;
+
+const locationData = { A: null, B: null };
+let preferA = 'auto';           // A 的出行方式
+let preferB = 'auto';           // B 的出行方式
+let departureTime = null;       // 出发时间 "HH:MM" 或 null
+let searchDebounceTimer = null; // 输入防抖
+let currentSessionId = null;    // 当前搜索 Session ID（用于路线重算）
+let allPoisData = [];           // 完整的 POI 列表（最多20条），用于切换显示数量
+let currentHighlightIdx = -1;   // 当前高亮的地点索引
+
+// 加载状态模拟
+let loadingTimer = null;
+const STEP_INTERVALS = [0, 3000, 7000, 12000, 17000];
+
+// ─────────────────────────────────────────────
+// 初始化
+// ─────────────────────────────────────────────
+async function init() {
+  // 获取后端配置
+  try {
+    const resp = await fetch('/api/config');
+    const cfg = await resp.json();
+
+    const badge = document.getElementById('apiStatusBadge');
+    if (!cfg.has_amap_key) {
+      badge.textContent = '⚠️ 高德Key未配置';
+      badge.className = 'api-badge warn';
+      showToast('请在 .env 中配置 AMAP_KEY 后重启服务', 'error', 8000);
+      loadFallbackMap();
+      return;
+    }
+    badge.textContent = '✓ API已就绪';
+
+    // 加载高德地图
+    const script = document.createElement('script');
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${cfg.amap_key}&plugin=AMap.AutoComplete,AMap.PlaceSearch,AMap.Geocoder,AMap.Marker,AMap.InfoWindow`;
+    script.onload = initMap;
+    script.onerror = () => {
+      showToast('高德地图加载失败，请检查API Key是否有效', 'error', 8000);
+      loadFallbackMap();
+    };
+    document.head.appendChild(script);
+  } catch(e) {
+    showToast('后端服务连接失败，请确认 app.py 已启动', 'error', 0);
+  }
+}
+
+function loadFallbackMap() {
+  const mapDiv = document.getElementById('map');
+  mapDiv.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#8B91A8;gap:16px;">
+      <div style="font-size:60px;">🗺️</div>
+      <div style="font-size:16px;font-weight:600;">地图加载失败</div>
+      <div style="font-size:13px;text-align:center;line-height:1.8;max-width:280px;">
+        请在 <code style="background:#22263A;padding:2px 6px;border-radius:4px;">.env</code> 文件中添加高德地图 API Key：<br>
+        <code style="background:#22263A;padding:6px 12px;border-radius:4px;display:inline-block;margin-top:8px;">AMAP_KEY=你的key</code>
+      </div>
+    </div>
+  `;
+}
+
+function initMap() {
+  map = new AMap.Map('map', {
+    zoom: 12,
+    center: [116.397428, 39.90923],  // 默认北京
+    mapStyle: 'amap://styles/dark',
+    features: ['bg', 'road', 'building', 'point'],
+  });
+
+  infoWindow = new AMap.InfoWindow({
+    offset: new AMap.Pixel(0, -30),
+    closeWhenClickMap: true
+  });
+
+  map.on('click', onMapClick);
+
+  // 搜索框自动完成
+  setupAutoComplete('searchA', 'A');
+  setupAutoComplete('searchB', 'B');
+}
+
+function setupAutoComplete(inputId, which) {
+  if (typeof AMap === 'undefined') return;
+  const ac = new AMap.AutoComplete({ input: inputId });
+  ac.on('select', (e) => {
+    const poi = e.poi;
+    if (poi && poi.location) {
+      setLocation(which, poi.location.lng, poi.location.lat, poi.name);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────
+// 地图点击模式
+// ─────────────────────────────────────────────
+function startMapClick(which) {
+  mapClickMode = which;
+  const tip = document.getElementById('mapTip');
+  const dot = document.getElementById('tipDot');
+  const text = document.getElementById('tipText');
+  const modeBar = document.getElementById('modeBar');
+
+  tip.classList.add('show');
+  dot.style.background = which === 'A' ? '#4FC3F7' : '#FF8A65';
+  text.textContent = `点击地图，设置地点 ${which}`;
+  modeBar.style.display = 'flex';
+
+  document.getElementById(`mode${which}`).classList.add('active');
+  document.getElementById(`mode${which === 'A' ? 'B' : 'A'}`).classList.remove('active');
+
+  // 高亮对应的location item
+  document.getElementById(`locA`).classList.toggle('active', which === 'A');
+  document.getElementById(`locB`).classList.toggle('active', which === 'B');
+
+  if (map) map.setDefaultCursor('crosshair');
+}
+
+function clearMapMode() {
+  mapClickMode = null;
+  document.getElementById('mapTip').classList.remove('show');
+  document.getElementById('modeBar').style.display = 'none';
+  document.getElementById('locA').classList.remove('active');
+  document.getElementById('locB').classList.remove('active');
+  if (map) map.setDefaultCursor('');
+}
+
+function onMapClick(e) {
+  if (!mapClickMode) return;
+  const lng = e.lnglat.getLng();
+  const lat = e.lnglat.getLat();
+  const which = mapClickMode;
+  clearMapMode();
+
+  // 逆地理编码获取地址
+  fetch('/api/geocode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address: `${lng},${lat}`, isLngLat: true })
+  }).catch(() => null);
+
+  // 直接用坐标设置（名字后端会尝试逆编码）
+  const geocoder = new AMap.Geocoder({ radius: 500 });
+  geocoder.getAddress(new AMap.LngLat(lng, lat), (status, result) => {
+    let name = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    if (status === 'complete' && result.regeocode) {
+      name = result.regeocode.formattedAddress || name;
+    }
+    setLocation(which, lng, lat, name);
+  });
+}
+
+// ─────────────────────────────────────────────
+// 搜索下拉（输入时实时显示候选）
+// ─────────────────────────────────────────────
+function onSearchInput(which) {
+  clearTimeout(searchDebounceTimer);
+  const input = document.getElementById(`search${which}`).value.trim();
+  const dropdown = document.getElementById(`dropdown${which}`);
+  if (!input || !map) { dropdown.classList.remove('show'); return; }
+
+  // 防抖300ms，走后端 /api/geocode-suggest（基于高德 Web 服务 Key，稳定可靠）
+  searchDebounceTimer = setTimeout(() => doSearchSuggest(which, input), 300);
+}
+
+async function doSearchSuggest(which, input) {
+  const dropdown = document.getElementById(`dropdown${which}`);
+  try {
+    const resp = await fetch('/api/geocode-suggest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: input }),
+    });
+    const data = await resp.json();
+    const tips = data.tips || [];
+    dropdown.innerHTML = '';
+
+    if (tips.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'dropdown-empty';
+      empty.textContent = '未找到相关地点';
+      dropdown.appendChild(empty);
+      dropdown.classList.add('show');
+      return;
+    }
+
+    tips.forEach(t => {
+      const item = document.createElement('div');
+      item.className = 'dropdown-item';
+      // 用 dataset 存数据，完全避免字符串拼接导致的引号冲突
+      item.dataset.lng  = t.lng;
+      item.dataset.lat  = t.lat;
+      item.dataset.name = t.name;
+      item.innerHTML = `
+        <div class="di-name">${t.name}</div>
+        <div class="di-addr">${t.district || ''}${t.address || ''}</div>
+      `;
+      item.addEventListener('mousedown', (e) => {
+        // 用 mousedown 而非 click，在 document click 关闭下拉之前先触发
+        e.preventDefault();
+        e.stopPropagation();
+        selectDropdown(which, parseFloat(item.dataset.lng), parseFloat(item.dataset.lat), item.dataset.name);
+      });
+      dropdown.appendChild(item);
+    });
+
+    dropdown.classList.add('show');
+  } catch(e) {
+    dropdown.classList.remove('show');
+  }
+}
+
+function selectDropdown(which, lng, lat, name) {
+  document.getElementById(`dropdown${which}`).classList.remove('show');
+  document.getElementById(`search${which}`).value = name;
+  setLocation(which, lng, lat, name);
+}
+
+async function searchLocation(which) {
+  const input = document.getElementById(`search${which}`).value.trim();
+  if (!input) return;
+
+  // 关闭下拉，复用 suggest 接口
+  document.getElementById(`dropdown${which}`).classList.remove('show');
+  await doSearchSuggest(which, input);
+}
+
+// 点击其他地方关闭下拉
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.search-wrapper')) {
+    document.querySelectorAll('.search-dropdown').forEach(d => d.classList.remove('show'));
+  }
+});
+
+// ─────────────────────────────────────────────
+// 出行方式 & 出发时间
+// ─────────────────────────────────────────────
+
+/**
+ * 设置某一方（A/B）的出行偏好
+ * groupId: 可选，指定哪个 <div class="transport-pref"> 的id
+ *          不传则同步更新所有对应 A/B 的按钮组（主表单 + 重算面板）
+ */
+function setPrefAB(which, btn, groupId) {
+  const mode = btn.dataset.mode;
+  if (which === 'A') preferA = mode;
+  else preferB = mode;
+
+  // 找到所有需要同步的按钮组
+  const groupsA = ['prefA', 'recalcPrefA'];
+  const groupsB = ['prefB', 'recalcPrefB'];
+  const groups = which === 'A' ? groupsA : groupsB;
+
+  groups.forEach(gid => {
+    const container = document.getElementById(gid);
+    if (!container) return;
+    container.querySelectorAll('.pref-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === mode);
+    });
+  });
+}
+
+// 兼容旧 setPref 调用（不破坏已有逻辑）
+function setPref(btn) { setPrefAB('A', btn); setPrefAB('B', btn); }
+
+function onTimeChange(input) {
+  departureTime = input.value || null;
+  const hint = document.getElementById('timeHint');
+  const clearBtn = document.getElementById('clearTimeBtn');
+  if (departureTime) {
+    hint.textContent = `将按 ${departureTime} 出发计算公交路线`;
+    hint.style.color = 'var(--primary)';
+    clearBtn.style.display = '';
+  } else {
+    hint.textContent = '不填默认工作日中午 12:00（避免末班车问题）';
+    hint.style.color = 'var(--text2)';
+    clearBtn.style.display = 'none';
+  }
+}
+
+function clearTime() {
+  document.getElementById('departureTime').value = '';
+  departureTime = null;
+  onTimeChange({ value: '' });
+}
+
+// ─────────────────────────────────────────────
+// 路线重算（不重新搜索，只重算路线）
+// ─────────────────────────────────────────────
+async function recalcRoutes() {
+  if (!currentSessionId) { showToast('请先执行搜索', 'error'); return; }
+
+  const btn = document.getElementById('recalcBtn');
+  btn.disabled = true;
+  document.getElementById('recalcBtnIcon').textContent = '';
+  document.getElementById('recalcBtnText').textContent = '计算中...';
+
+  try {
+    const resp = await fetch('/api/v2/routes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: currentSessionId,
+        prefer_a: preferA,
+        prefer_b: preferB,
+        departure_time: departureTime,
+      }),
+    });
+    const result = await resp.json();
+
+    if (result.success) {
+      // 保留上次的 summary 文字，仅更新路线数据
+      const prevSummary = document.getElementById('summaryText').textContent;
+      renderResults({ pois: result.pois, restaurants: result.pois,
+                      midpoint: result.midpoint, summary: prevSummary });
+      showToast('路线已重新计算', 'info', 2500);
+    } else {
+      showToast(result.error || '重算失败', 'error');
+    }
+  } catch (e) {
+    showToast('网络错误: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('recalcBtnIcon').textContent = '🔄';
+    document.getElementById('recalcBtnText').textContent = '重新计算路线';
+  }
+}
+
+// ─────────────────────────────────────────────
+// 设置地点
+// ─────────────────────────────────────────────
+function setLocation(which, lng, lat, name) {
+  locationData[which] = { lng, lat, name };
+
+  const nameEl = document.getElementById(`loc${which}Name`);
+  const coordEl = document.getElementById(`loc${which}Coords`);
+  const hintEl = document.getElementById(`loc${which}Hint`);
+  const itemEl = document.getElementById(`loc${which}`);
+
+  nameEl.textContent = name;
+  coordEl.textContent = `${lng.toFixed(5)}, ${lat.toFixed(5)}`;
+  coordEl.style.display = 'block';
+  hintEl.style.display = 'none';
+
+  // 添加清除按钮
+  let clearBtn = itemEl.querySelector('.clear-btn');
+  if (!clearBtn) {
+    clearBtn = document.createElement('button');
+    clearBtn.className = 'clear-btn';
+    clearBtn.textContent = '清除';
+    clearBtn.onclick = (e) => { e.stopPropagation(); clearLocation(which); };
+    itemEl.appendChild(clearBtn);
+  }
+
+  // 更新地图标记
+  updateMapMarker(which, lng, lat, name);
+
+  // 地图居中（两点都设置后）
+  if (locationData.A && locationData.B) {
+    map.setFitView([markerA, markerB]);
+    checkSubmitReady();
+  } else {
+    map.setCenter([lng, lat]);
+  }
+
+  checkSubmitReady();
+}
+
+function clearLocation(which) {
+  locationData[which] = null;
+  const nameEl = document.getElementById(`loc${which}Name`);
+  const coordEl = document.getElementById(`loc${which}Coords`);
+  const hintEl = document.getElementById(`loc${which}Hint`);
+  const itemEl = document.getElementById(`loc${which}`);
+
+  nameEl.textContent = '未选择';
+  coordEl.style.display = 'none';
+  hintEl.style.display = '';
+
+  const clearBtn = itemEl.querySelector('.clear-btn');
+  if (clearBtn) clearBtn.remove();
+
+  const marker = which === 'A' ? markerA : markerB;
+  if (marker) { map.remove(marker); }
+  if (which === 'A') markerA = null;
+  else markerB = null;
+
+  checkSubmitReady();
+}
+
+function updateMapMarker(which, lng, lat, name) {
+  const colors = { A: '#4FC3F7', B: '#FF8A65' };
+  const color = colors[which];
+
+  const iconHtml = `
+    <div style="
+      width:32px;height:32px;
+      background:${color};
+      border-radius:50% 50% 50% 0;
+      transform:rotate(-45deg);
+      border:3px solid white;
+      box-shadow:0 2px 8px rgba(0,0,0,0.4);
+      display:flex;align-items:center;justify-content:center;
+    ">
+      <span style="transform:rotate(45deg);font-size:12px;font-weight:700;color:#fff;">${which}</span>
+    </div>
+  `;
+
+  const marker = new AMap.Marker({
+    position: [lng, lat],
+    content: iconHtml,
+    offset: new AMap.Pixel(-16, -32),
+    title: name
+  });
+
+  marker.on('click', () => {
+    infoWindow.setContent(`
+      <div style="background:#1A1D26;border:1px solid #2E3350;border-radius:8px;padding:10px 14px;color:#E8EAF0;min-width:160px;">
+        <div style="font-size:11px;color:${color};font-weight:700;margin-bottom:4px;">地点 ${which}</div>
+        <div style="font-size:13px;font-weight:600;">${name}</div>
+      </div>
+    `);
+    infoWindow.open(map, marker.getPosition());
+  });
+
+  const existingMarker = which === 'A' ? markerA : markerB;
+  if (existingMarker) map.remove(existingMarker);
+
+  map.add(marker);
+  if (which === 'A') markerA = marker;
+  else markerB = marker;
+}
+
+// ─────────────────────────────────────────────
+// 例子填充
+// ─────────────────────────────────────────────
+function setExample(text) {
+  document.getElementById('queryInput').value = text;
+}
+
+// ─────────────────────────────────────────────
+// 检查提交按钮状态
+// ─────────────────────────────────────────────
+function checkSubmitReady() {
+  const ready = locationData.A && locationData.B;
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = !ready;
+}
+
+// ─────────────────────────────────────────────
+// 加载动画
+// ─────────────────────────────────────────────
+function startLoading() {
+  document.getElementById('loadingCard').classList.add('show');
+  document.getElementById('resultsSection').style.display = 'none';
+  clearRestaurantMarkers();
+
+  const steps = ['step1', 'step2', 'step3', 'step4', 'step5'];
+  steps.forEach(s => {
+    const el = document.getElementById(s);
+    el.className = 'loading-step';
+    el.querySelector('.step-icon').textContent = el.id.replace('step', '');
+  });
+
+  let currentStep = 0;
+  function activateNext() {
+    if (currentStep > 0) {
+      const prev = document.getElementById(`step${currentStep}`);
+      prev.className = 'loading-step done';
+      prev.querySelector('.step-icon').textContent = '✓';
+    }
+    currentStep++;
+    if (currentStep <= steps.length) {
+      document.getElementById(`step${currentStep}`).className = 'loading-step active';
+      loadingTimer = setTimeout(activateNext, STEP_INTERVALS[currentStep - 1] || 3000);
+    }
+  }
+  activateNext();
+}
+
+function stopLoading() {
+  clearTimeout(loadingTimer);
+  document.getElementById('loadingCard').classList.remove('show');
+  const steps = ['step1', 'step2', 'step3', 'step4', 'step5'];
+  steps.forEach(s => {
+    const el = document.getElementById(s);
+    el.className = 'loading-step done';
+    el.querySelector('.step-icon').textContent = '✓';
+  });
+}
+
+// ─────────────────────────────────────────────
+// 主搜索
+// ─────────────────────────────────────────────
+async function doSearch() {
+  const query = document.getElementById('queryInput').value.trim();
+  if (!locationData.A || !locationData.B) {
+    showToast('请先选择两个地点', 'error');
+    return;
+  }
+  if (!query) {
+    showToast('请描述您的需求', 'error');
+    return;
+  }
+
+  currentSessionId = null;  // 重置session
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  document.getElementById('submitIcon').textContent = '';
+  document.getElementById('submitText').textContent = 'AI分析中...';
+  startLoading();
+  const city = guessCityFromLocations();
+
+  try {
+    // 使用 v2 API
+    const resp = await fetch('/api/v2/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        location_a: locationData.A,
+        location_b: locationData.B,
+        query: query,
+        city: city,
+        prefer_a: preferA,
+        prefer_b: preferB,
+        departure_time: departureTime,
+      }),
+    });
+
+    const result = await resp.json();
+    stopLoading();
+
+    if (result.success) {
+      currentSessionId = result.session_id || null;
+      // v2 返回格式：result.pois
+      const data = {
+        pois: result.pois || [],
+        restaurants: result.pois || [],
+        midpoint: result.midpoint || {},
+        summary: result.summary || '',
+        search_radius_m: result.search_radius_m || 3000,
+      };
+      renderResults(data);
+      showToast(`发现 ${data.pois.length} 个推荐地点`, 'info', 3000);
+    } else {
+      showToast(result.error || '分析失败，请重试', 'error', 6000);
+    }
+  } catch (e) {
+    stopLoading();
+    showToast('网络请求失败：' + e.message, 'error', 6000);
+  } finally {
+    btn.disabled = false;
+    document.getElementById('submitIcon').textContent = '🔍';
+    document.getElementById('submitText').textContent = '开始智能推荐';
+  }
+}
+
+function guessCityFromLocations() {
+  // 粗略根据经纬度判断城市
+  const lng = locationData.A?.lng || 116;
+  const lat = locationData.A?.lat || 39;
+  if (lat > 39 && lat < 41 && lng > 115 && lng < 118) return '北京';
+  if (lat > 30 && lat < 32 && lng > 120 && lng < 122) return '上海';
+  if (lat > 22 && lat < 24 && lng > 113 && lng < 115) return '广州';
+  if (lat > 22 && lat < 23 && lng > 113 && lng < 115) return '深圳';
+  if (lat > 30 && lat < 31 && lng > 120 && lng < 121) return '杭州';
+  return '北京';
+}
+
+// ─────────────────────────────────────────────
+// 渲染结果
+// ─────────────────────────────────────────────
+function clearRestaurantMarkers() {
+  restaurantMarkers.forEach(m => map && map.remove(m));
+  restaurantMarkers = [];
+  if (markerMid) { map.remove(markerMid); markerMid = null; }
+}
+
+function renderResults(data) {
+  clearRestaurantMarkers();
+  currentHighlightIdx = -1;
+
+  // 兼容 v2（pois）和 v1（restaurants）字段，保存完整列表
+  allPoisData = data.pois || data.restaurants || [];
+  const section = document.getElementById('resultsSection');
+  const count = document.getElementById('resultsCount');
+
+  section.style.display = 'block';
+  count.textContent = allPoisData.length;
+
+  // 显示 AI 总结
+  const summaryCard = document.getElementById('summaryCard');
+  const summaryText = document.getElementById('summaryText');
+  if (data.summary) {
+    summaryText.textContent = data.summary;
+    summaryCard.style.display = 'block';
+  } else {
+    summaryCard.style.display = 'none';
+  }
+
+  // 显示/隐藏重算面板（仅有 session_id 时显示）
+  const recalcCard = document.getElementById('recalcCard');
+  recalcCard.style.display = currentSessionId ? 'block' : 'none';
+
+  // 重置数量选择器为默认值
+  const sel = document.getElementById('displayCountSelect');
+  if (sel) sel.value = '20';
+
+  if (allPoisData.length === 0) {
+    document.getElementById('restaurantList').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">😕</div>
+        <p>未找到符合条件的地点<br>可以尝试放宽条件或修改搜索关键词</p>
+      </div>
+    `;
+    return;
+  }
+
+  // 显示中间点标记
+  if (data.midpoint) {
+    const mid = data.midpoint;
+    markerMid = new AMap.Marker({
+      position: [mid.lng, mid.lat],
+      content: `<div style="
+        width:36px;height:36px;
+        background:rgba(255,107,53,0.15);
+        border:2px solid #FF6B35;border-radius:50%;
+        display:flex;align-items:center;justify-content:center;
+        font-size:16px;box-shadow:0 0 0 4px rgba(255,107,53,0.1);
+      ">⚖️</div>`,
+      offset: new AMap.Pixel(-18, -18),
+      title: '中间区域',
+      zIndex: 50
+    });
+    map.add(markerMid);
+  }
+
+  // 渲染卡片 + 地图标记（受数量选择器控制）
+  renderPoisByCount(parseInt(document.getElementById('displayCountSelect')?.value || '20'));
+}
+
+/** 根据数量选择器，重新渲染卡片列表和地图标记 */
+function renderPoisByCount(displayN) {
+  const list = document.getElementById('restaurantList');
+  const modeIcon = { transit: '🚇', driving: '🚗', walking: '🚶', cycling: '🚲', auto: '⚡' };
+
+  // 清除旧标记（但保留 midpoint marker）
+  restaurantMarkers.forEach(m => map && map.remove(m));
+  restaurantMarkers = [];
+  currentHighlightIdx = -1;
+
+  const visiblePois = allPoisData.slice(0, displayN);
+
+  list.innerHTML = '';
+  visiblePois.forEach((r, idx) => {
+    const rankClass = idx < 3 ? `rank-${idx + 1}` : '';
+    const ratingStars = r.rating > 0
+      ? '★'.repeat(Math.round(r.rating)) + '☆'.repeat(5 - Math.round(r.rating))
+      : '暂无评分';
+    const ratingText = r.rating > 0 ? r.rating.toFixed(1) : '-';
+    const transA = r.transport_from_a || {};
+    const transB = r.transport_from_b || {};
+
+    const card = document.createElement('div');
+    card.className = 'restaurant-card';
+    card.id = `rcard-${idx}`;
+    card.innerHTML = `
+      <div class="restaurant-top">
+        <div class="restaurant-name">${r.name}</div>
+        <div class="restaurant-rank ${rankClass}">${idx + 1}</div>
+      </div>
+      <div class="restaurant-meta">
+        <div class="meta-tag">
+          <span class="rating-stars">${ratingStars}</span>
+          <span class="rating-num">${ratingText}</span>
+        </div>
+        ${r.cost_per_person ? `<div class="meta-tag"><span class="icon">💰</span>人均${r.cost_per_person}元</div>` : ''}
+        ${r.tel ? `<div class="meta-tag"><span class="icon">📞</span>${r.tel}</div>` : ''}
+      </div>
+      <div class="restaurant-address">📍 ${r.address || '地址未知'}</div>
+      <div class="transport-grid">
+        <div class="transport-item transport-a">
+          <div class="transport-label">从 A 出发</div>
+          <div class="transport-time">
+            <span class="transport-mode-icon">${modeIcon[transA.mode] || '🚇'}</span>
+            ${transA.duration_text || '计算中...'}
+          </div>
+          <div class="transport-detail">${transA.line_summary || transA.distance_text || ''}</div>
+        </div>
+        <div class="transport-item transport-b">
+          <div class="transport-label">从 B 出发</div>
+          <div class="transport-time">
+            <span class="transport-mode-icon">${modeIcon[transB.mode] || '🚇'}</span>
+            ${transB.duration_text || '计算中...'}
+          </div>
+          <div class="transport-detail">${transB.line_summary || transB.distance_text || ''}</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+        <button class="btn-small btn-secondary nearby-btn"
+          style="width:100%;font-size:12px;padding:6px;"
+          data-idx="${idx}">
+          🔍 搜索此地点附近
+        </button>
+      </div>
+    `;
+
+    // 附近搜索按钮：阻止冒泡，不触发卡片高亮
+    const nearbyBtn = card.querySelector('.nearby-btn');
+    nearbyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openNearbyPopup(r, nearbyBtn);
+    });
+
+    card.onclick = () => highlightRestaurant(idx, r);
+    list.appendChild(card);
+
+    // 地图标记（默认半透明暗色）
+    if (r.lng && r.lat) {
+      addRestaurantMarker(idx, r, modeIcon);
+    }
+  });
+
+  // 地图缩放到所有标记
+  setTimeout(() => {
+    const allMarkers = [markerA, markerB, markerMid, ...restaurantMarkers].filter(Boolean);
+    if (allMarkers.length > 0) map.setFitView(allMarkers, false, [50, 50, 50, 50]);
+  }, 300);
+}
+
+/** 数量选择器变更时触发 */
+function onDisplayCountChange() {
+  const sel = document.getElementById('displayCountSelect');
+  const n = parseInt(sel.value || '20');
+  renderPoisByCount(n);
+}
+
+/** 生成标记图标 HTML，dim=true 表示半透明暗色，dim=false 表示亮色高亮 */
+function markerIconHtml(idx, rating, dim) {
+  const ratingStr = rating > 0 ? rating.toFixed(1) : '?';
+  if (dim) {
+    return `<div style="
+      background:rgba(80,85,110,0.55);
+      border-radius:20px;padding:4px 8px;
+      color:rgba(220,225,240,0.6);
+      font-size:12px;font-weight:700;
+      box-shadow:none;white-space:nowrap;
+      border:1.5px solid rgba(150,155,180,0.3);
+      display:flex;align-items:center;gap:4px;
+      transition:all 0.2s;
+    ">
+      <span>${idx + 1}</span>
+      <span style="color:rgba(255,215,0,0.5);">★</span>
+      <span>${ratingStr}</span>
+    </div>`;
+  } else {
+    return `<div style="
+      background:linear-gradient(135deg,#FF6B35,#FF8C5A);
+      border-radius:20px;padding:4px 8px;
+      color:white;font-size:12px;font-weight:700;
+      box-shadow:0 0 12px rgba(255,107,53,0.8);
+      white-space:nowrap;
+      border:2px solid rgba(255,255,255,0.6);
+      display:flex;align-items:center;gap:4px;
+      transition:all 0.2s;
+    ">
+      <span>${idx + 1}</span>
+      <span style="color:#FFD700;">★</span>
+      <span>${ratingStr}</span>
+    </div>`;
+  }
+}
+
+function addRestaurantMarker(idx, r, modeIcon) {
+  const marker = new AMap.Marker({
+    position: [r.lng, r.lat],
+    content: markerIconHtml(idx, r.rating, true),  // 默认半透明
+    offset: new AMap.Pixel(-20, -16),
+    title: r.name,
+    zIndex: 80
+  });
+
+  const transA = r.transport_from_a || {};
+  const transB = r.transport_from_b || {};
+
+  marker.on('click', () => {
+    infoWindow.setContent(`
+      <div style="background:#1A1D26;border:1px solid #2E3350;border-radius:10px;padding:14px;color:#E8EAF0;min-width:220px;max-width:280px;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:8px;">${r.name}</div>
+        <div style="font-size:12px;color:#8B91A8;margin-bottom:8px;">📍 ${r.address || ''}</div>
+        ${r.rating > 0 ? `<div style="margin-bottom:10px;"><span style="color:#FFB800;">★</span> <span style="font-weight:600;">${r.rating.toFixed(1)}</span> 分</div>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.2);border-radius:6px;padding:8px;">
+            <div style="font-size:11px;color:#4FC3F7;font-weight:600;margin-bottom:4px;">从A出发</div>
+            <div style="font-weight:700;">${transA.duration_text || '?'}</div>
+            <div style="font-size:11px;color:#8B91A8;">${transA.line_summary || ''}</div>
+          </div>
+          <div style="background:rgba(255,138,101,0.1);border:1px solid rgba(255,138,101,0.2);border-radius:6px;padding:8px;">
+            <div style="font-size:11px;color:#FF8A65;font-weight:600;margin-bottom:4px;">从B出发</div>
+            <div style="font-weight:700;">${transB.duration_text || '?'}</div>
+            <div style="font-size:11px;color:#8B91A8;">${transB.line_summary || ''}</div>
+          </div>
+        </div>
+      </div>
+    `);
+    infoWindow.open(map, marker.getPosition());
+    highlightRestaurant(idx, r);
+  });
+
+  map.add(marker);
+  restaurantMarkers.push(marker);
+}
+
+function highlightRestaurant(idx, r) {
+  // 把上一个高亮标记恢复成暗色
+  if (currentHighlightIdx >= 0 && currentHighlightIdx < restaurantMarkers.length) {
+    const prev = restaurantMarkers[currentHighlightIdx];
+    const prevR = allPoisData[currentHighlightIdx];
+    if (prev && prevR) {
+      prev.setContent(markerIconHtml(currentHighlightIdx, prevR.rating, true));
+      prev.setzIndex(80);
+    }
+  }
+
+  // 当前标记变亮
+  currentHighlightIdx = idx;
+  if (idx >= 0 && idx < restaurantMarkers.length) {
+    const cur = restaurantMarkers[idx];
+    if (cur) {
+      cur.setContent(markerIconHtml(idx, r.rating, false));
+      cur.setzIndex(200);
+    }
+  }
+
+  // 高亮卡片
+  document.querySelectorAll('.restaurant-card').forEach(c => c.classList.remove('highlighted'));
+  const card = document.getElementById(`rcard-${idx}`);
+  if (card) {
+    card.classList.add('highlighted');
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // 地图轻微平移到选中点（不重置缩放）
+  if (r.lng && r.lat && map) {
+    map.panTo([r.lng, r.lat]);
+  }
+}
+
+function renderRawAnswer(text) {
+  const section = document.getElementById('resultsSection');
+  const list = document.getElementById('restaurantList');
+  section.style.display = 'block';
+  list.innerHTML = `
+    <div class="card" style="white-space:pre-wrap;font-size:13px;line-height:1.8;color:var(--text2);">
+      ${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
+    </div>
+  `;
+}
+
+// ─────────────────────────────────────────────
+// 附近搜索浮层
+// ─────────────────────────────────────────────
+let nearbyCurrentPoi = null;       // 当前正在查附近的 POI
+let nearbyMarkers    = [];         // 附近搜索结果的地图标记（临时）
+
+function openNearbyPopup(r, anchorEl) {
+  nearbyCurrentPoi = r;
+  const popup = document.getElementById('nearbyPopup');
+  document.getElementById('nearbyPopupTitle').textContent = r.name + ' · 附近搜索';
+  document.getElementById('nearbyKeywordInput').value = '';
+  document.getElementById('nearbyResults').innerHTML =
+    '<div class="nearby-empty">选择快捷标签或输入关键词搜索</div>';
+
+  // 定位浮层到按钮附近
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.display = 'flex';
+  popup.style.flexDirection = 'column';
+
+  // 智能定位：优先显示在按钮下方，空间不足则上方
+  const popupH = 480;
+  const spaceBelow = window.innerHeight - rect.bottom - 8;
+  const top = spaceBelow >= popupH ? rect.bottom + 6
+                                   : Math.max(8, rect.top - popupH - 6);
+  const left = Math.min(rect.left, window.innerWidth - 328);
+  popup.style.top  = top  + 'px';
+  popup.style.left = left + 'px';
+
+  // 点击浮层外关闭
+  setTimeout(() => {
+    document.addEventListener('click', onNearbyOutsideClick);
+  }, 50);
+
+  document.getElementById('nearbyKeywordInput').focus();
+}
+
+function onNearbyOutsideClick(e) {
+  const popup = document.getElementById('nearbyPopup');
+  if (!popup.contains(e.target) && !e.target.closest('.nearby-btn')) {
+    closeNearbyPopup();
+  }
+}
+
+function closeNearbyPopup() {
+  document.getElementById('nearbyPopup').style.display = 'none';
+  document.removeEventListener('click', onNearbyOutsideClick);
+  clearNearbyMarkers();
+}
+
+function clearNearbyMarkers() {
+  nearbyMarkers.forEach(m => map && map.remove(m));
+  nearbyMarkers = [];
+}
+
+function nearbyQuick(keyword) {
+  document.getElementById('nearbyKeywordInput').value = keyword;
+  doNearbySearch();
+}
+
+async function doNearbySearch() {
+  if (!nearbyCurrentPoi) return;
+  const keyword = document.getElementById('nearbyKeywordInput').value.trim();
+  if (!keyword) return;
+
+  const resultsEl = document.getElementById('nearbyResults');
+  resultsEl.innerHTML = '<div class="nearby-loading">🔍 搜索中...</div>';
+  clearNearbyMarkers();
+
+  try {
+    const resp = await fetch('/api/nearby-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lng: nearbyCurrentPoi.lng,
+        lat: nearbyCurrentPoi.lat,
+        keyword: keyword,
+        radius_m: 1500,
+      }),
+    });
+    const data = await resp.json();
+
+    if (!data.success || data.pois.length === 0) {
+      resultsEl.innerHTML = `<div class="nearby-empty">附近 1.5km 内暂无"${keyword}"</div>`;
+      return;
+    }
+
+    resultsEl.innerHTML = '';
+    data.pois.forEach(p => {
+      const distText = p.distance_m < 1000
+        ? p.distance_m + 'm'
+        : (p.distance_m / 1000).toFixed(1) + 'km';
+      const ratingStr = p.rating > 0 ? `★${p.rating.toFixed(1)}` : '';
+
+      const item = document.createElement('div');
+      item.className = 'nearby-item';
+      item.innerHTML = `
+        <div class="nearby-item-dist">${distText}</div>
+        <div class="nearby-item-info">
+          <div class="nearby-item-name">${p.name}</div>
+          <div class="nearby-item-addr">${p.address || p.type || ''}</div>
+        </div>
+        ${ratingStr ? `<div class="nearby-item-rating">${ratingStr}</div>` : ''}
+      `;
+
+      // 点击条目：地图打点并居中
+      item.addEventListener('click', () => {
+        clearNearbyMarkers();
+        if (p.lng && p.lat && map) {
+          const marker = new AMap.Marker({
+            position: [p.lng, p.lat],
+            content: `<div style="
+              background:#4FC3F7;border-radius:16px;padding:3px 8px;
+              color:#0F1117;font-size:11px;font-weight:700;
+              box-shadow:0 0 8px rgba(79,195,247,0.7);
+              white-space:nowrap;border:2px solid white;
+            ">${p.name}</div>`,
+            offset: new AMap.Pixel(-20, -14),
+            zIndex: 300,
+          });
+          map.add(marker);
+          nearbyMarkers.push(marker);
+          map.panTo([p.lng, p.lat]);
+        }
+        // 高亮当前条目
+        resultsEl.querySelectorAll('.nearby-item').forEach(el => el.style.background = '');
+        item.style.background = 'var(--surface2)';
+      });
+
+      resultsEl.appendChild(item);
+    });
+
+    // 批量打轻点到地图
+    data.pois.forEach(p => {
+      if (!p.lng || !p.lat || !map) return;
+      const dot = new AMap.Marker({
+        position: [p.lng, p.lat],
+        content: `<div style="
+          width:8px;height:8px;border-radius:50%;
+          background:#4FC3F7;opacity:0.6;
+          box-shadow:0 0 4px rgba(79,195,247,0.6);
+        "></div>`,
+        offset: new AMap.Pixel(-4, -4),
+        zIndex: 250,
+      });
+      map.add(dot);
+      nearbyMarkers.push(dot);
+    });
+
+  } catch(e) {
+    resultsEl.innerHTML = `<div class="nearby-empty">搜索失败：${e.message}</div>`;
+  }
+}
+
+// ─────────────────────────────────────────────
+// 可拖拽分隔线
+// ─────────────────────────────────────────────
+(function initResizableDivider() {
+  // 等待 DOM ready
+  document.addEventListener('DOMContentLoaded', () => {
+    const divider  = document.getElementById('panelDivider');
+    const panel    = document.getElementById('leftPanel');
+    const mainLayout = document.getElementById('mainLayout');
+    if (!divider || !panel) return;
+
+    let dragging = false;
+    let startX   = 0;
+    let startW   = 0;
+
+    divider.addEventListener('mousedown', (e) => {
+      dragging = true;
+      startX   = e.clientX;
+      startW   = panel.getBoundingClientRect().width;
+      divider.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const delta  = e.clientX - startX;
+      const newW   = Math.min(Math.max(startW + delta, 280), window.innerWidth * 0.7);
+      panel.style.width = newW + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      divider.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      // 触发地图重新计算尺寸
+      if (map) setTimeout(() => map.resize(), 50);
+    });
+  });
+})();
+
+// ─────────────────────────────────────────────
+// Toast 通知
+// ─────────────────────────────────────────────
+let toastTimer = null;
+function showToast(msg, type = 'info', duration = 4000) {
+  clearTimeout(toastTimer);
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = `toast ${type} show`;
+  if (duration > 0) {
+    toastTimer = setTimeout(() => toast.classList.remove('show'), duration);
+  }
+}
+
+// ─────────────────────────────────────────────
+// 回车搜索
+// ─────────────────────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    doSearch();
+  }
+});
+
+// ─────────────────────────────────────────────
+// 启动
+// ─────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
