@@ -109,10 +109,14 @@ def _compact_poi(poi: dict) -> dict:
 
 
 def _format_route(route: dict) -> dict:
+    success = route.get("success", True)
+    # 查询失败时保留 error 字段，duration_text 置为 None（前端据此显示友好提示）
     return {
         "mode":             route.get("mode", "unknown"),
-        "duration_text":    route.get("duration_text", "?"),
-        "distance_text":    route.get("distance_text", "?"),
+        "success":          success,
+        "error":            route.get("error") if not success else None,
+        "duration_text":    route.get("duration_text") if success else None,
+        "distance_text":    route.get("distance_text") if success else None,
         "line_summary":     route.get("line_summary", ""),
         "duration_minutes": route.get("duration_minutes", 999),
         "all_modes":        route.get("all_modes", {}),

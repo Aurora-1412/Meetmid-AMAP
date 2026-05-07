@@ -1716,6 +1716,19 @@ function renderResults(data) {
   renderPoisByCount(parseInt(document.getElementById('displayCountSelect')?.value || '20'));
 }
 
+/** 格式化单侧交通信息，失败时显示友好错误文字 */
+function formatTransport(trans) {
+  if (!trans) return { timeHtml: '<span style="color:var(--text2)">暂未查询到交通信息</span>', detail: '' };
+  if (trans.success === false) {
+    const msg = trans.error ? `查询失败：${trans.error}` : '暂未查询到交通信息';
+    return { timeHtml: `<span style="color:var(--text2);font-size:12px;">${msg}</span>`, detail: '' };
+  }
+  return {
+    timeHtml: trans.duration_text || '<span style="color:var(--text2)">暂未查询到交通信息</span>',
+    detail: trans.line_summary || trans.distance_text || '',
+  };
+}
+
 /** 根据数量选择器，重新渲染卡片列表和地图标记 */
 function renderPoisByCount(displayN) {
   const list = document.getElementById('restaurantList');
@@ -1737,6 +1750,8 @@ function renderPoisByCount(displayN) {
     const ratingText = r.rating > 0 ? r.rating.toFixed(1) : '-';
     const transA = r.transport_from_a || {};
     const transB = r.transport_from_b || {};
+    const fmtA = formatTransport(transA);
+    const fmtB = formatTransport(transB);
 
     const card = document.createElement('div');
     card.className = 'restaurant-card';
@@ -1760,17 +1775,17 @@ function renderPoisByCount(displayN) {
           <div class="transport-label">从 A 出发</div>
           <div class="transport-time">
             <span class="transport-mode-icon">${modeIcon[transA.mode] || '🚇'}</span>
-            ${transA.duration_text || '计算中...'}
+            ${fmtA.timeHtml}
           </div>
-          <div class="transport-detail">${transA.line_summary || transA.distance_text || ''}</div>
+          <div class="transport-detail">${fmtA.detail}</div>
         </div>
         <div class="transport-item transport-b">
           <div class="transport-label">从 B 出发</div>
           <div class="transport-time">
             <span class="transport-mode-icon">${modeIcon[transB.mode] || '🚇'}</span>
-            ${transB.duration_text || '计算中...'}
+            ${fmtB.timeHtml}
           </div>
-          <div class="transport-detail">${transB.line_summary || transB.distance_text || ''}</div>
+          <div class="transport-detail">${fmtB.detail}</div>
         </div>
       </div>
       <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
@@ -1860,6 +1875,8 @@ function addRestaurantMarker(idx, r, modeIcon) {
   const transA = r.transport_from_a || {};
   const transB = r.transport_from_b || {};
 
+  const ifmtA = formatTransport(transA);
+  const ifmtB = formatTransport(transB);
   marker.on('click', () => {
     infoWindow.setContent(`
       <div style="background:#1A1D26;border:1px solid #2E3350;border-radius:10px;padding:14px;color:#E8EAF0;min-width:220px;max-width:280px;">
@@ -1869,13 +1886,13 @@ function addRestaurantMarker(idx, r, modeIcon) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <div style="background:rgba(79,195,247,0.1);border:1px solid rgba(79,195,247,0.2);border-radius:6px;padding:8px;">
             <div style="font-size:11px;color:#4FC3F7;font-weight:600;margin-bottom:4px;">从A出发</div>
-            <div style="font-weight:700;">${transA.duration_text || '?'}</div>
-            <div style="font-size:11px;color:#8B91A8;">${transA.line_summary || ''}</div>
+            <div style="font-weight:700;font-size:13px;">${ifmtA.timeHtml}</div>
+            <div style="font-size:11px;color:#8B91A8;">${ifmtA.detail}</div>
           </div>
           <div style="background:rgba(255,138,101,0.1);border:1px solid rgba(255,138,101,0.2);border-radius:6px;padding:8px;">
             <div style="font-size:11px;color:#FF8A65;font-weight:600;margin-bottom:4px;">从B出发</div>
-            <div style="font-weight:700;">${transB.duration_text || '?'}</div>
-            <div style="font-size:11px;color:#8B91A8;">${transB.line_summary || ''}</div>
+            <div style="font-weight:700;font-size:13px;">${ifmtB.timeHtml}</div>
+            <div style="font-size:11px;color:#8B91A8;">${ifmtB.detail}</div>
           </div>
         </div>
       </div>
