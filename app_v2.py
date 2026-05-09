@@ -19,6 +19,11 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from openai import OpenAI
 
+# 路线计算时每个 POI 调用 2 次 amap_get_best_route（A + B），
+# 每次内部还可能调多种交通方式。批量计算极易触发高德 3 次/秒限速。
+# 此间隔配合 amap_client._amap_get 的重试，双重保障。
+_ROUTE_INTER_POI_DELAY = 0.35  # 秒，每个 POI 计算完后等待
+
 from amap_client import (
     DEEPSEEK_API_KEY,
     AMAP_KEY,
@@ -403,7 +408,7 @@ def calculate_routes(
     print(f"[排序权重] 评分×{w_rating:.2f}  总时间×{w_total_time:.2f}  时间差×{w_time_diff:.2f}")
 
     enriched = []
-    for poi in pois:
+    for idx, poi in enumerate(pois):
         p = dict(poi)
 
         route_a = amap_get_best_route(
@@ -426,6 +431,11 @@ def calculate_routes(
         p["total_time_minutes"] = dur_a + dur_b
 
         enriched.append(p)
+
+        # 主动限速：每个 POI 计算完后等待，避免连续请求触发高德 3 次/秒限速
+        # amap_get_best_route 内部单个 POI 可能产生 2-4 次 API 调用（A/B 各多种交通）
+        if idx < len(pois) - 1:
+            time.sleep(_ROUTE_INTER_POI_DELAY)
 
     # 归一化后加权综合评分
     max_total  = max((p["total_time_minutes"] for p in enriched), default=1) or 1
@@ -848,4 +858,6 @@ if __name__ == "__main__":
     print("=" * 60)
     print("  访问地址: http://localhost:5000")
     print("=" * 60)
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    # threaded=True：每个请求在独立线程中处理，允许多用户同时访问/打开多个网页
+    # 不加此参数（或设为 False）时，Flask 单线程串行处理，一个请求卡住会阻塞所有人
+    app.run(debug=True, host="127.0.0.1", port=5000, threaded=True)
