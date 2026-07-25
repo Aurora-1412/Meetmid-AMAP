@@ -875,28 +875,48 @@
           <span class="example-tag" onclick="setExample('好吃的甜品店')">🧁 甜品</span>
         </div>
 
-        <!-- A 出行方式 -->
-        <div style="display:flex;align-items:center;gap:6px;margin-top:14px;margin-bottom:6px;">
-          <div class="card-title" style="margin:0;">🔵 A 的出行方式</div>
+        <!-- 中点方式 -->
+        <div class="card-title" style="margin-top:14px;margin-bottom:6px;">⚖️ 中点方式</div>
+        <div class="transport-pref" id="midpointModeMain">
+          <button class="pref-btn active" data-mode="geo" onclick="setMidpointMode('geo')">📍 位置中点</button>
+          <button class="pref-btn" data-mode="transport" onclick="setMidpointMode('transport')">🛣️ 交通中点</button>
         </div>
-        <div class="transport-pref" id="prefA">
-          <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('A',this)">⚡ 最快</button>
-          <button class="pref-btn" data-mode="transit" onclick="setPrefAB('A',this)">🚇 地铁</button>
-          <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('A',this)">🚲 骑行</button>
-          <button class="pref-btn" data-mode="driving" onclick="setPrefAB('A',this)">🚗 驾车</button>
-          <button class="pref-btn" data-mode="walking" onclick="setPrefAB('A',this)">🚶 步行</button>
+        <div id="transportMidpointHint" style="display:none;font-size:11px;color:var(--text2);margin-top:6px;">
+          交通中点要求双方统一选择公交地铁或驾车
         </div>
 
-        <!-- B 出行方式 -->
-        <div style="display:flex;align-items:center;gap:6px;margin-top:10px;margin-bottom:6px;">
-          <div class="card-title" style="margin:0;">🟠 B 的出行方式</div>
+        <div id="independentTransportPrefs">
+          <!-- A 出行方式 -->
+          <div style="display:flex;align-items:center;gap:6px;margin-top:14px;margin-bottom:6px;">
+            <div class="card-title" style="margin:0;">🔵 A 的出行方式</div>
+          </div>
+          <div class="transport-pref" id="prefA">
+            <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('A',this)">⚡ 最快</button>
+            <button class="pref-btn" data-mode="transit" onclick="setPrefAB('A',this)">🚇 地铁</button>
+            <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('A',this)">🚲 骑行</button>
+            <button class="pref-btn" data-mode="driving" onclick="setPrefAB('A',this)">🚗 驾车</button>
+            <button class="pref-btn" data-mode="walking" onclick="setPrefAB('A',this)">🚶 步行</button>
+          </div>
+
+          <!-- B 出行方式 -->
+          <div style="display:flex;align-items:center;gap:6px;margin-top:10px;margin-bottom:6px;">
+            <div class="card-title" style="margin:0;">🟠 B 的出行方式</div>
+          </div>
+          <div class="transport-pref" id="prefB">
+            <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('B',this)">⚡ 最快</button>
+            <button class="pref-btn" data-mode="transit" onclick="setPrefAB('B',this)">🚇 地铁</button>
+            <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('B',this)">🚲 骑行</button>
+            <button class="pref-btn" data-mode="driving" onclick="setPrefAB('B',this)">🚗 驾车</button>
+            <button class="pref-btn" data-mode="walking" onclick="setPrefAB('B',this)">🚶 步行</button>
+          </div>
         </div>
-        <div class="transport-pref" id="prefB">
-          <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('B',this)">⚡ 最快</button>
-          <button class="pref-btn" data-mode="transit" onclick="setPrefAB('B',this)">🚇 地铁</button>
-          <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('B',this)">🚲 骑行</button>
-          <button class="pref-btn" data-mode="driving" onclick="setPrefAB('B',this)">🚗 驾车</button>
-          <button class="pref-btn" data-mode="walking" onclick="setPrefAB('B',this)">🚶 步行</button>
+
+        <div id="sharedTransportPrefs" style="display:none;margin-top:12px;">
+          <div class="card-title" style="margin-bottom:6px;">双方统一出行方式</div>
+          <div class="transport-pref" id="sharedTransportMain">
+            <button class="pref-btn active" data-mode="transit" onclick="setSharedTransport(this)">🚇 双方公交地铁</button>
+            <button class="pref-btn" data-mode="driving" onclick="setSharedTransport(this)">🚗 双方驾车</button>
+          </div>
         </div>
 
         <!-- 出发时间 -->
@@ -983,24 +1003,37 @@
           <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">
             修改出行方式后点击"重新计算"，无需重新搜索
           </div>
-          <div style="margin-bottom:8px;">
-            <div style="font-size:12px;color:#4FC3F7;margin-bottom:4px;">🔵 A 的出行方式</div>
-            <div class="transport-pref" id="recalcPrefA">
-              <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('A',this,'recalcPrefA')">⚡ 最快</button>
-              <button class="pref-btn" data-mode="transit" onclick="setPrefAB('A',this,'recalcPrefA')">🚇 地铁</button>
-              <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('A',this,'recalcPrefA')">🚲 骑行</button>
-              <button class="pref-btn" data-mode="driving" onclick="setPrefAB('A',this,'recalcPrefA')">🚗 驾车</button>
-              <button class="pref-btn" data-mode="walking" onclick="setPrefAB('A',this,'recalcPrefA')">🚶 步行</button>
+          <div class="transport-pref" id="midpointModeRecalc" style="margin-bottom:10px;">
+            <button class="pref-btn active" data-mode="geo" onclick="setMidpointMode('geo')">📍 位置中点</button>
+            <button class="pref-btn" data-mode="transport" onclick="setMidpointMode('transport')">🛣️ 交通中点</button>
+          </div>
+          <div id="recalcIndependentPrefs">
+            <div style="margin-bottom:8px;">
+              <div style="font-size:12px;color:#4FC3F7;margin-bottom:4px;">🔵 A 的出行方式</div>
+              <div class="transport-pref" id="recalcPrefA">
+                <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('A',this,'recalcPrefA')">⚡ 最快</button>
+                <button class="pref-btn" data-mode="transit" onclick="setPrefAB('A',this,'recalcPrefA')">🚇 地铁</button>
+                <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('A',this,'recalcPrefA')">🚲 骑行</button>
+                <button class="pref-btn" data-mode="driving" onclick="setPrefAB('A',this,'recalcPrefA')">🚗 驾车</button>
+                <button class="pref-btn" data-mode="walking" onclick="setPrefAB('A',this,'recalcPrefA')">🚶 步行</button>
+              </div>
+            </div>
+            <div style="margin-bottom:12px;">
+              <div style="font-size:12px;color:#FF8A65;margin-bottom:4px;">🟠 B 的出行方式</div>
+              <div class="transport-pref" id="recalcPrefB">
+                <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('B',this,'recalcPrefB')">⚡ 最快</button>
+                <button class="pref-btn" data-mode="transit" onclick="setPrefAB('B',this,'recalcPrefB')">🚇 地铁</button>
+                <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('B',this,'recalcPrefB')">🚲 骑行</button>
+                <button class="pref-btn" data-mode="driving" onclick="setPrefAB('B',this,'recalcPrefB')">🚗 驾车</button>
+                <button class="pref-btn" data-mode="walking" onclick="setPrefAB('B',this,'recalcPrefB')">🚶 步行</button>
+              </div>
             </div>
           </div>
-          <div style="margin-bottom:12px;">
-            <div style="font-size:12px;color:#FF8A65;margin-bottom:4px;">🟠 B 的出行方式</div>
-            <div class="transport-pref" id="recalcPrefB">
-              <button class="pref-btn active" data-mode="auto" onclick="setPrefAB('B',this,'recalcPrefB')">⚡ 最快</button>
-              <button class="pref-btn" data-mode="transit" onclick="setPrefAB('B',this,'recalcPrefB')">🚇 地铁</button>
-              <button class="pref-btn" data-mode="cycling" onclick="setPrefAB('B',this,'recalcPrefB')">🚲 骑行</button>
-              <button class="pref-btn" data-mode="driving" onclick="setPrefAB('B',this,'recalcPrefB')">🚗 驾车</button>
-              <button class="pref-btn" data-mode="walking" onclick="setPrefAB('B',this,'recalcPrefB')">🚶 步行</button>
+          <div id="recalcSharedPrefs" style="display:none;margin-bottom:12px;">
+            <div style="font-size:12px;color:var(--text2);margin-bottom:4px;">双方统一出行方式</div>
+            <div class="transport-pref" id="sharedTransportRecalc">
+              <button class="pref-btn active" data-mode="transit" onclick="setSharedTransport(this)">🚇 双方公交地铁</button>
+              <button class="pref-btn" data-mode="driving" onclick="setSharedTransport(this)">🚗 双方驾车</button>
             </div>
           </div>
           <button class="btn-submit" id="recalcBtn" onclick="recalcRoutes()"
@@ -1031,6 +1064,18 @@
         📍 选地点B
       </button>
       <button class="mode-btn" onclick="clearMapMode()">取消</button>
+    </div>
+    <div id="routeLegend" style="
+      display:none;position:absolute;left:16px;bottom:18px;z-index:500;
+      background:rgba(255,255,255,0.96);border:1px solid rgba(0,0,0,0.12);
+      border-radius:9px;padding:8px 11px;color:#303442;font-size:12px;
+      box-shadow:0 3px 12px rgba(0,0,0,0.16);
+    ">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span><i style="display:inline-block;width:18px;height:4px;background:#2196F3;border-radius:2px;vertical-align:middle;"></i> A 路线</span>
+        <span><i style="display:inline-block;width:18px;height:4px;background:#FF7A45;border-radius:2px;vertical-align:middle;"></i> B 路线</span>
+      </div>
+      <div id="routeStatus" style="margin-top:4px;color:#6E748A;"></div>
     </div>
   </div>
 
@@ -1067,6 +1112,8 @@
 </div>
 
 <!-- 高德地图 JS API（动态加载） -->
+<script src="static/midpoint-state.js"></script>
+<script src="static/map-routes.js"></script>
 <script>
 // ─────────────────────────────────────────────
 // 全局状态
@@ -1078,6 +1125,7 @@ let restaurantMarkers = [];   // AMap.Marker 实例数组，与 allPoisData 下�
 let infoWindow = null;
 
 const locationData = { A: null, B: null };
+const midpointState = MidpointState.create();
 let preferA = 'auto';           // A 的出行方式
 let preferB = 'auto';           // B 的出行方式
 let departureTime = null;       // 出发时间 "HH:MM" 或 null
@@ -1085,6 +1133,8 @@ let searchDebounceTimer = null; // 输入防抖
 let currentSessionId = null;    // 当前搜索 Session ID（用于路线重算）
 let allPoisData = [];           // 完整的 POI 列表（最多20条），用于切换显示数量
 let currentHighlightIdx = -1;   // 当前高亮的地点索引
+let routeOverlays = [];         // 当前选中 POI 的 A/B 路线
+const routeRequestGate = MapRoutes.createRequestGate();
 
 // 加载状态模拟
 let loadingTimer = null;
@@ -1094,9 +1144,10 @@ const STEP_INTERVALS = [0, 3000, 7000, 12000, 17000];
 // 初始化
 // ─────────────────────────────────────────────
 async function init() {
+  syncMidpointControls();
   // 获取后端配置
   try {
-    const resp = await fetch('/api/config');
+    const resp = await fetch('api/config');
     const cfg = await resp.json();
 
     const badge = document.getElementById('apiStatusBadge');
@@ -1141,7 +1192,7 @@ function initMap() {
   map = new AMap.Map('map', {
     zoom: 12,
     center: [116.397428, 39.90923],  // 默认北京
-    mapStyle: 'amap://styles/dark',
+    mapStyle: 'amap://styles/normal',
     features: ['bg', 'road', 'building', 'point'],
   });
 
@@ -1210,7 +1261,7 @@ function onMapClick(e) {
   clearMapMode();
 
   // 逆地理编码获取地址
-  fetch('/api/geocode', {
+  fetch('api/geocode', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ address: `${lng},${lat}`, isLngLat: true })
@@ -1243,7 +1294,7 @@ function onSearchInput(which) {
 async function doSearchSuggest(which, input) {
   const dropdown = document.getElementById(`dropdown${which}`);
   try {
-    const resp = await fetch('/api/geocode-suggest', {
+    const resp = await fetch('api/geocode-suggest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ keyword: input }),
@@ -1320,8 +1371,10 @@ document.addEventListener('click', (e) => {
  */
 function setPrefAB(which, btn, groupId) {
   const mode = btn.dataset.mode;
-  if (which === 'A') preferA = mode;
-  else preferB = mode;
+  midpointState.setGeoPreference(which, mode);
+  const snapshot = midpointState.snapshot();
+  preferA = snapshot.preferA;
+  preferB = snapshot.preferB;
 
   // 找到所有需要同步的按钮组
   const groupsA = ['prefA', 'recalcPrefA'];
@@ -1335,6 +1388,54 @@ function setPrefAB(which, btn, groupId) {
       b.classList.toggle('active', b.dataset.mode === mode);
     });
   });
+}
+
+function setMidpointMode(mode) {
+  midpointState.setMode(mode);
+  syncMidpointControls();
+}
+
+function setSharedTransport(btn) {
+  midpointState.setTransportPreference(btn.dataset.mode);
+  syncMidpointControls();
+}
+
+function syncMidpointControls() {
+  const snapshot = midpointState.snapshot();
+  preferA = snapshot.preferA;
+  preferB = snapshot.preferB;
+
+  ['midpointModeMain', 'midpointModeRecalc'].forEach(gid => {
+    const container = document.getElementById(gid);
+    if (!container) return;
+    container.querySelectorAll('.pref-btn').forEach(button => {
+      button.classList.toggle(
+        'active', button.dataset.mode === snapshot.midpointMode
+      );
+    });
+  });
+
+  ['sharedTransportMain', 'sharedTransportRecalc'].forEach(gid => {
+    const container = document.getElementById(gid);
+    if (!container) return;
+    container.querySelectorAll('.pref-btn').forEach(button => {
+      button.classList.toggle(
+        'active', button.dataset.mode === snapshot.transportPrefer
+      );
+    });
+  });
+
+  const isTransport = snapshot.midpointMode === 'transport';
+  ['independentTransportPrefs', 'recalcIndependentPrefs'].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.style.display = isTransport ? 'none' : '';
+  });
+  ['sharedTransportPrefs', 'recalcSharedPrefs'].forEach(id => {
+    const element = document.getElementById(id);
+    if (element) element.style.display = isTransport ? '' : 'none';
+  });
+  const hint = document.getElementById('transportMidpointHint');
+  if (hint) hint.style.display = isTransport ? '' : 'none';
 }
 
 // 兼容旧 setPref 调用（不破坏已有逻辑）
@@ -1361,25 +1462,91 @@ function clearTime() {
   onTimeChange({ value: '' });
 }
 
+function setRouteStatus(message, isError = false) {
+  const legend = document.getElementById('routeLegend');
+  const status = document.getElementById('routeStatus');
+  if (!legend || !status) return;
+  legend.style.display = '';
+  status.textContent = message || '';
+  status.style.color = isError ? '#D84A4A' : '#6E748A';
+}
+
+function clearDisplayedRoutes() {
+  routeRequestGate.invalidate();
+  routeOverlays.forEach(overlay => map && map.remove(overlay));
+  routeOverlays = [];
+  const legend = document.getElementById('routeLegend');
+  if (legend) legend.style.display = 'none';
+}
+
+function showRouteLegend(errors) {
+  const messages = [];
+  if (errors?.a) messages.push(`A：${errors.a}`);
+  if (errors?.b) messages.push(`B：${errors.b}`);
+  setRouteStatus(messages.length ? messages.join('；') : '已显示双方路线', messages.length > 0);
+}
+
+async function showRoutesForPoi(poi) {
+  clearDisplayedRoutes();
+  if (!currentSessionId || !poi.route_id || !map) return;
+  const token = routeRequestGate.next();
+  setRouteStatus('正在读取 A、B 路径…');
+
+  try {
+    const response = await fetch(
+      `api/v2/session/${encodeURIComponent(currentSessionId)}` +
+      `/routes/${encodeURIComponent(poi.route_id)}`
+    );
+    const payload = await response.json();
+    if (!routeRequestGate.isCurrent(token)) return;
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.error || '路线读取失败');
+    }
+
+    MapRoutes.buildDrawableRoutes(payload).forEach(segment => {
+      const overlay = new AMap.Polyline({
+        path: segment.path,
+        strokeColor: segment.color,
+        strokeWeight: 6,
+        strokeOpacity: 0.9,
+        lineJoin: 'round',
+        lineCap: 'round',
+        zIndex: 120,
+      });
+      map.add(overlay);
+      routeOverlays.push(overlay);
+    });
+    showRouteLegend(payload.errors || {});
+    if (routeOverlays.length) {
+      map.setFitView(routeOverlays, false, [60, 60, 60, 60]);
+    }
+  } catch (error) {
+    if (routeRequestGate.isCurrent(token)) {
+      setRouteStatus(error.message, true);
+    }
+  }
+}
+
 // ─────────────────────────────────────────────
 // 路线重算（不重新搜索，只重算路线）
 // ─────────────────────────────────────────────
 async function recalcRoutes() {
   if (!currentSessionId) { showToast('请先执行搜索', 'error'); return; }
 
+  clearDisplayedRoutes();
   const btn = document.getElementById('recalcBtn');
   btn.disabled = true;
   document.getElementById('recalcBtnIcon').textContent = '';
   document.getElementById('recalcBtnText').textContent = '计算中...';
+  const midpointPayload = midpointState.requestPayload();
 
   try {
-    const resp = await fetch('/api/v2/routes', {
+    const resp = await fetch('api/v2/routes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         session_id: currentSessionId,
-        prefer_a: preferA,
-        prefer_b: preferB,
+        ...midpointPayload,
         departure_time: departureTime,
       }),
     });
@@ -1389,8 +1556,14 @@ async function recalcRoutes() {
       // 保留上次的 summary 文字，仅更新路线数据
       const prevSummary = document.getElementById('summaryText').textContent;
       renderResults({ pois: result.pois, restaurants: result.pois,
-                      midpoint: result.midpoint, summary: prevSummary });
-      showToast('路线已重新计算', 'info', 2500);
+                      midpoint: result.midpoint,
+                      midpoint_details: result.midpoint_details,
+                      summary: prevSummary });
+      if (result.midpoint_details?.fallback_reason) {
+        showToast(result.midpoint_details.fallback_reason, 'info', 6000);
+      } else {
+        showToast('路线已重新计算', 'info', 2500);
+      }
     } else {
       showToast(result.error || '重算失败', 'error');
     }
@@ -1444,6 +1617,7 @@ function setLocation(which, lng, lat, name) {
 }
 
 function clearLocation(which) {
+  clearDisplayedRoutes();
   locationData[which] = null;
   const nameEl = document.getElementById(`loc${which}Name`);
   const coordEl = document.getElementById(`loc${which}Coords`);
@@ -1580,6 +1754,7 @@ async function doSearch() {
     return;
   }
 
+  clearDisplayedRoutes();
   currentSessionId = null;  // 重置session
   const btn = document.getElementById('submitBtn');
   btn.disabled = true;
@@ -1587,10 +1762,11 @@ async function doSearch() {
   document.getElementById('submitText').textContent = 'AI分析中...';
   startLoading();
   const city = guessCityFromLocations();
+  const midpointPayload = midpointState.requestPayload();
 
   try {
     // 使用 v2 API
-    const resp = await fetch('/api/v2/search', {
+    const resp = await fetch('api/v2/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1598,8 +1774,7 @@ async function doSearch() {
         location_b: locationData.B,
         query: query,
         city: city,
-        prefer_a: preferA,
-        prefer_b: preferB,
+        ...midpointPayload,
         departure_time: departureTime,
       }),
     });
@@ -1614,11 +1789,16 @@ async function doSearch() {
         pois: result.pois || [],
         restaurants: result.pois || [],
         midpoint: result.midpoint || {},
+        midpoint_details: result.midpoint_details || {},
         summary: result.summary || '',
         search_radius_m: result.search_radius_m || 3000,
       };
       renderResults(data);
-      showToast(`发现 ${data.pois.length} 个推荐地点`, 'info', 3000);
+      if (data.midpoint_details?.fallback_reason) {
+        showToast(data.midpoint_details.fallback_reason, 'info', 6000);
+      } else {
+        showToast(`发现 ${data.pois.length} 个推荐地点`, 'info', 3000);
+      }
     } else {
       showToast(result.error || '分析失败，请重试', 'error', 6000);
     }
@@ -1737,6 +1917,9 @@ function renderPoisByCount(displayN) {
   // 清除旧标记（但保留 midpoint marker）
   restaurantMarkers.forEach(m => map && map.remove(m));
   restaurantMarkers = [];
+  if (currentHighlightIdx >= displayN) {
+    clearDisplayedRoutes();
+  }
   currentHighlightIdx = -1;
 
   const visiblePois = allPoisData.slice(0, displayN);
@@ -1938,6 +2121,7 @@ function highlightRestaurant(idx, r) {
   if (r.lng && r.lat && map) {
     map.panTo([r.lng, r.lat]);
   }
+  showRoutesForPoi(r);
 }
 
 function renderRawAnswer(text) {
@@ -2020,7 +2204,7 @@ async function doNearbySearch() {
   clearNearbyMarkers();
 
   try {
-    const resp = await fetch('/api/nearby-search', {
+    const resp = await fetch('api/nearby-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

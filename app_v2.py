@@ -33,6 +33,7 @@ from amap_client import (
     amap_search_nearby,
     haversine_distance,
     find_balanced_midpoint,
+    find_time_midpoint,
 )
 
 app = Flask(__name__, static_folder="static")
@@ -42,6 +43,7 @@ llm_client = OpenAI(
     api_key=DEEPSEEK_API_KEY,
     base_url="https://api.deepseek.com",
 )
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
 
 # ──────────────────────────────────────────────────────
@@ -128,6 +130,48 @@ def _format_route(route: dict) -> dict:
     }
 
 
+def validate_midpoint_choice(
+    midpoint_mode: str, prefer_a: str, prefer_b: str
+) -> str | None:
+    """校验中点方式与双方出行方式的组合。"""
+    if midpoint_mode not in ("geo", "transport"):
+        return "中点方式只支持位置中点或交通中点"
+    if midpoint_mode == "transport":
+        valid = (
+            prefer_a == prefer_b
+            and prefer_a in ("transit", "driving")
+        )
+        if not valid:
+            return "选择交通中点时，双方必须同时选择公交地铁或同时选择驾车"
+    return None
+
+
+def compute_requested_midpoint(
+    lng1: float, lat1: float,
+    lng2: float, lat2: float,
+    *,
+    midpoint_mode: str,
+    prefer_a: str,
+    prefer_b: str,
+    city: str,
+    departure_time: str | None,
+) -> dict:
+    """按用户明确选择的位置/交通中点策略计算搜索中心。"""
+    error = validate_midpoint_choice(midpoint_mode, prefer_a, prefer_b)
+    if error:
+        raise ValueError(error)
+    if midpoint_mode == "geo":
+        result = find_balanced_midpoint(lng1, lat1, lng2, lat2)
+        result["method"] = "geo"
+        return result
+    return find_time_midpoint(
+        lng1, lat1, lng2, lat2,
+        city=city,
+        departure_time=departure_time,
+        mode=prefer_a,
+    )
+
+
 # ──────────────────────────────────────────────────────
 # Agent 1：规划 Agent
 # 职责：理解用户自然语言需求 → 结构化搜索参数
@@ -146,9 +190,9 @@ _PLAN_SYSTEM = """\
   "poi_category": "餐厅/咖啡馆/酒吧/电影院/KTV/购物/其他",
   "notes": "其他特殊需求，如价格范围、环境要求等，没有则空字符串",
   "sort_weights": {
-    "rating": 0.6,
-    "total_time": 0.3,
-    "time_diff": 0.1
+    "rating": 0.15,
+    "total_time": 0.05,
+    "time_diff": 0.8
   }
 }
 
@@ -158,11 +202,11 @@ _PLAN_SYSTEM = """\
 - top_n 固定为20（前端会提供数量选择器让用户筛选）
 - keyword_fallbacks 提供2个备选，从窄到宽（例如"鲁菜"的备选：["山东菜","中餐"]）
 - sort_weights 三项之和必须等于1.0，根据用户意图调整：
-  * 默认（未明确提及）：rating=0.6, total_time=0.3, time_diff=0.1
-  * 用户强调"近"/"不要太远"/"方便"：rating=0.3, total_time=0.6, time_diff=0.1
-  * 用户强调"评分高"/"好评"/"口碑"：rating=0.8, total_time=0.15, time_diff=0.05
-  * 用户强调"公平"/"两边一样远"/"均衡"：rating=0.4, total_time=0.2, time_diff=0.4
-  * 用户同时强调近和公平：rating=0.2, total_time=0.4, time_diff=0.4
+  * 默认（未明确提及）：rating=0.15, total_time=0.05, time_diff=0.8
+  * 用户强调"近"/"不要太远"/"方便"：rating=0.15, total_time=0.4, time_diff=0.45
+  * 用户强调"评分高"/"好评"/"口碑"：rating=0.5, total_time=0.05, time_diff=0.45
+  * 用户强调"公平"/"两边一样远"/"均衡"：rating=0.05, total_time=0.05, time_diff=0.9
+  * 用户同时强调近和公平：rating=0.05, total_time=0.25, time_diff=0.7
 """
 
 
@@ -175,7 +219,7 @@ def agent_plan(user_query: str) -> dict:
     print(f"[Agent1/规划] 分析需求: {user_query}")
     try:
         resp = llm_client.chat.completions.create(
-            model="deepseek-chat",
+            model=DEEPSEEK_MODEL,
             messages=[
                 {"role": "system", "content": _PLAN_SYSTEM},
                 {"role": "user",   "content": user_query},
@@ -216,7 +260,11 @@ _SEARCH_TOOLS = [
         "type": "function",
         "function": {
             "name": "find_midpoint",
-            "description": "计算 A、B 两点的地理中点和建议搜索半径",
+            "description": (
+                "计算 A、B 两点的中间点和建议搜索半径。"
+                "优先取 A→B 驾车行程的「时间中点」（落在实际行车路径上、耗时约一半处的位置），"
+                "若无可用路线或路线绕路过远，则自动退回地理位置中点。"
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -268,6 +316,9 @@ _SEARCH_SYSTEM = """\
 def agent_search(
     location_a: dict, location_b: dict,
     plan: dict, city: str, search_ctx: dict,
+    departure_time: str | None = None,
+    prefer_a: str = "auto", prefer_b: str = "auto",
+    midpoint_mode: str = "geo",
 ) -> dict:
     """
     Agent 2：搜索 Agent
@@ -277,6 +328,13 @@ def agent_search(
     keyword = plan.get("keyword", "餐厅")
     fallbacks = plan.get("keyword_fallbacks", [])
     print(f"[Agent2/搜索] keyword={keyword}, fallbacks={fallbacks}")
+
+    # 城市 / 出发时间 / 出行方式存入上下文，供 find_midpoint 决定中点计算方式
+    search_ctx["city"] = city
+    search_ctx["departure_time"] = departure_time
+    search_ctx["prefer_a"] = prefer_a
+    search_ctx["prefer_b"] = prefer_b
+    search_ctx["midpoint_mode"] = midpoint_mode
 
     messages = [
         {"role": "system", "content": _SEARCH_SYSTEM},
@@ -295,7 +353,7 @@ def agent_search(
 
     for round_i in range(10):
         resp = llm_client.chat.completions.create(
-            model="deepseek-chat",
+            model=DEEPSEEK_MODEL,
             messages=messages,
             tools=_SEARCH_TOOLS,
             tool_choice="auto",
@@ -316,6 +374,7 @@ def agent_search(
             return {
                 "success": found_count > 0,
                 "midpoint": midpoint,
+                "midpoint_details": search_ctx.get("last_midpoint_details", {}),
                 "search_radius_m": radius,
             }
 
@@ -337,6 +396,7 @@ def agent_search(
     return {
         "success": len(search_ctx.get("pois", [])) > 0,
         "midpoint": search_ctx.get("last_midpoint", {}),
+        "midpoint_details": search_ctx.get("last_midpoint_details", {}),
         "search_radius_m": search_ctx.get("last_radius", 3000),
     }
 
@@ -344,12 +404,24 @@ def agent_search(
 def _exec_search_tool(name: str, args: dict, search_ctx: dict) -> dict:
     """执行搜索工具：完整数据存入 search_ctx，压缩版返回给 LLM"""
     if name == "find_midpoint":
-        result = find_balanced_midpoint(
+        result = compute_requested_midpoint(
             args["lng1"], args["lat1"],
             args["lng2"], args["lat2"],
+            midpoint_mode=search_ctx.get("midpoint_mode", "geo"),
+            prefer_a=search_ctx.get("prefer_a", "auto"),
+            prefer_b=search_ctx.get("prefer_b", "auto"),
+            city=search_ctx.get("city", "北京"),
+            departure_time=search_ctx.get("departure_time"),
+        )
+        print(
+            f"[Agent2/搜索] 实际方式={result.get('method')} "
+            f"原因={result.get('decision_reason') or result.get('fallback_reason') or ''} "
+            f"{result.get('note', '')}"
         )
         search_ctx["last_midpoint"] = result.get("midpoint", {})
         search_ctx["last_radius"]   = result.get("suggested_search_radius_m", 3000)
+        search_ctx["midpoint_method"] = result.get("method", "geo")
+        search_ctx["last_midpoint_details"] = result
         return result
 
     if name == "search_pois_nearby":
@@ -390,22 +462,29 @@ def calculate_routes(
     city: str = "北京",
     departure_time: str | None = None,
     sort_weights: dict | None = None,
+    geometry_cache: dict | None = None,
 ) -> list:
     """
     对每个 POI 分别计算从 A、从 B 出发的最优路线，并综合排名。
     sort_weights 由 Agent1 从 query 中提取：
-        {"rating": 0.6, "total_time": 0.3, "time_diff": 0.1}
+        {"rating": 0.15, "total_time": 0.05, "time_diff": 0.8}
     """
     w = sort_weights or {}
-    w_rating     = float(w.get("rating",     0.6))
-    w_total_time = float(w.get("total_time", 0.3))
-    w_time_diff  = float(w.get("time_diff",  0.1))
+    w_rating     = float(w.get("rating",     0.15))
+    w_total_time = float(w.get("total_time", 0.05))
+    w_time_diff  = float(w.get("time_diff",  0.8))
     w_sum = w_rating + w_total_time + w_time_diff or 1.0
     w_rating     /= w_sum
     w_total_time /= w_sum
     w_time_diff  /= w_sum
 
     print(f"[排序权重] 评分×{w_rating:.2f}  总时间×{w_total_time:.2f}  时间差×{w_time_diff:.2f}")
+
+    # 绝对量纲上限（保证不同指标之间可真实比较，而非相对批次最大值）
+    # 评分：高德满分 5.0；时间差：超过 30 分钟体感已经"很不公平"；总时间：超过 90 分钟视为"很远"
+    _ABS_MAX_RATING     = 5.0
+    _ABS_MAX_TIME_DIFF  = 30.0   # 分钟
+    _ABS_MAX_TOTAL_TIME = 90.0   # 分钟
 
     enriched = []
     for idx, poi in enumerate(pois):
@@ -425,6 +504,19 @@ def calculate_routes(
         )
         p["transport_from_b"] = _format_route(route_b)
 
+        route_id = p.get("route_id")
+        if geometry_cache is not None and route_id:
+            errors = {}
+            if not route_a.get("geometry"):
+                errors["a"] = route_a.get("error", "未获得路线轨迹")
+            if not route_b.get("geometry"):
+                errors["b"] = route_b.get("error", "未获得路线轨迹")
+            geometry_cache[route_id] = {
+                "route_a": route_a.get("geometry"),
+                "route_b": route_b.get("geometry"),
+                "errors": errors,
+            }
+
         dur_a = p["transport_from_a"]["duration_minutes"]
         dur_b = p["transport_from_b"]["duration_minutes"]
         p["time_diff_minutes"]  = abs(dur_a - dur_b)
@@ -437,16 +529,16 @@ def calculate_routes(
         if idx < len(pois) - 1:
             time.sleep(_ROUTE_INTER_POI_DELAY)
 
-    # 归一化后加权综合评分
-    max_total  = max((p["total_time_minutes"] for p in enriched), default=1) or 1
-    max_diff   = max((p["time_diff_minutes"]  for p in enriched), default=1) or 1
-    max_rating = max((p.get("rating", 0)      for p in enriched), default=5) or 5
-
+    # 绝对量纲归一化后加权综合评分
+    # 各指标除以固定上限而非批次最大值，避免小差距被人为放大
     for p in enriched:
+        rating_norm     = min(p.get("rating", 0) / _ABS_MAX_RATING, 1.0)
+        total_time_norm = min(p["total_time_minutes"] / _ABS_MAX_TOTAL_TIME, 1.0)
+        time_diff_norm  = min(p["time_diff_minutes"]  / _ABS_MAX_TIME_DIFF,  1.0)
         p["_score"] = round(
-            (p.get("rating", 0) / max_rating)       *  w_rating
-            - (p["total_time_minutes"] / max_total)  *  w_total_time
-            - (p["time_diff_minutes"]  / max_diff)   *  w_time_diff,
+            rating_norm     *  w_rating
+            - total_time_norm *  w_total_time
+            - time_diff_norm  *  w_time_diff,
             4,
         )
 
@@ -519,7 +611,7 @@ def agent_summarize(
 
     try:
         resp = llm_client.chat.completions.create(
-            model="deepseek-chat",
+            model=DEEPSEEK_MODEL,
             messages=[
                 {"role": "system", "content": _SUMMARY_SYSTEM},
                 {"role": "user",   "content": user_msg},
@@ -543,6 +635,7 @@ def run_pipeline(
     city: str = "北京",
     prefer_a: str = "auto", prefer_b: str = "auto",
     departure_time: str | None = None,
+    midpoint_mode: str = "geo",
 ) -> dict:
     """
     运行完整多 Agent 流水线。
@@ -553,13 +646,29 @@ def run_pipeline(
 
     # ── Agent 2：搜索 ──
     search_ctx: dict = {"pois": []}
-    search_result = agent_search(location_a, location_b, plan, city, search_ctx)
+    search_result = agent_search(
+        location_a, location_b, plan, city, search_ctx, departure_time,
+        prefer_a, prefer_b, midpoint_mode,
+    )
 
     if not search_result.get("success") or not search_ctx.get("pois"):
         return {"success": False, "error": "未能找到符合条件的地点，请尝试修改关键词或扩大范围"}
 
     midpoint        = search_result.get("midpoint", {})
+    midpoint_details = search_result.get("midpoint_details", {})
     search_radius_m = search_result.get("search_radius_m", 3000)
+    if midpoint_mode == "geo":
+        geo_midpoint_details = midpoint_details
+    else:
+        geo_midpoint_details = compute_requested_midpoint(
+            location_a["lng"], location_a["lat"],
+            location_b["lng"], location_b["lat"],
+            midpoint_mode="geo",
+            prefer_a=prefer_a,
+            prefer_b=prefer_b,
+            city=city,
+            departure_time=departure_time,
+        )
 
     # ── 筛选排名（Python 直接处理）──
     top_pois = filter_and_rank_pois(
@@ -567,13 +676,19 @@ def run_pipeline(
         min_rating=plan.get("min_rating", 4.0),
         top_n=plan.get("top_n", 20),
     )
+    top_pois = [
+        {**poi, "route_id": f"r{index}"}
+        for index, poi in enumerate(top_pois)
+    ]
     print(f"[Pipeline] 筛选后 {len(top_pois)} 个POI")
 
     # ── 路线计算（纯 Python，A/B 分别计算）──
+    route_geometries: dict = {}
     enriched = calculate_routes(
         top_pois, location_a, location_b,
         prefer_a, prefer_b, city, departure_time,
         sort_weights=plan.get("sort_weights"),
+        geometry_cache=route_geometries,
     )
 
     # ── Agent 3：总结 ──
@@ -589,11 +704,15 @@ def run_pipeline(
         "query":          user_query,
         "plan":           plan,
         "midpoint":       midpoint,
+        "midpoint_details": midpoint_details,
+        "geo_midpoint_details": geo_midpoint_details,
+        "midpoint_mode":  midpoint_mode,
         "search_radius_m": search_radius_m,
         "pois_base":      top_pois,
         "departure_time": departure_time,
         "prefer_a":       prefer_a,
         "prefer_b":       prefer_b,
+        "route_geometries": route_geometries,
     })
 
     return {
@@ -602,6 +721,8 @@ def run_pipeline(
         "summary":        summary_text,
         "plan":           plan,
         "midpoint":       midpoint,
+        "midpoint_details": midpoint_details,
+        "midpoint_mode":  midpoint_mode,
         "search_radius_m": search_radius_m,
         "pois":           enriched,
         "prefer_a":       prefer_a,
@@ -641,11 +762,17 @@ def api_v2_search():
     prefer_a       = data.get("prefer_a", "auto")
     prefer_b       = data.get("prefer_b", "auto")
     departure_time = data.get("departure_time") or None
+    midpoint_mode  = data.get("midpoint_mode", "geo")
 
     if not location_a or not location_b:
         return jsonify({"success": False, "error": "请提供两个地点的坐标"}), 400
     if not user_query:
         return jsonify({"success": False, "error": "请描述您的需求"}), 400
+    midpoint_error = validate_midpoint_choice(
+        midpoint_mode, prefer_a, prefer_b
+    )
+    if midpoint_error:
+        return jsonify({"success": False, "error": midpoint_error}), 400
     if not AMAP_KEY:
         return jsonify({"success": False, "error": "高德地图 API Key 未配置"}), 500
     if not DEEPSEEK_API_KEY:
@@ -654,7 +781,7 @@ def api_v2_search():
     try:
         result = run_pipeline(
             user_query, location_a, location_b,
-            city, prefer_a, prefer_b, departure_time,
+            city, prefer_a, prefer_b, departure_time, midpoint_mode,
         )
         return jsonify(result), (200 if result.get("success") else 500)
     except Exception as e:
@@ -667,6 +794,7 @@ def api_v2_routes():
     """
     路线重算接口：复用缓存的搜索结果，只重新计算路线。
     适合切换出行方式的场景，无需重新搜索。
+    切换出行方式时，中点也会按新方式重算（公交/驾车/几何）。
     """
     data           = request.json or {}
     session_id     = data.get("session_id")
@@ -687,19 +815,84 @@ def api_v2_routes():
 
     if departure_time is None:
         departure_time = session.get("departure_time")
+    midpoint_mode = data.get(
+        "midpoint_mode", session.get("midpoint_mode", "geo")
+    )
+    midpoint_error = validate_midpoint_choice(
+        midpoint_mode, prefer_a, prefer_b
+    )
+    if midpoint_error:
+        return jsonify({"success": False, "error": midpoint_error}), 400
+
+    location_a = session["location_a"]
+    location_b = session["location_b"]
+    city       = session.get("city", "北京")
 
     try:
+        # 位置中点保持不变；交通中点随统一交通方式重算。
+        if midpoint_mode == "transport":
+            mp = compute_requested_midpoint(
+                location_a["lng"], location_a["lat"],
+                location_b["lng"], location_b["lat"],
+                midpoint_mode=midpoint_mode,
+                prefer_a=prefer_a,
+                prefer_b=prefer_b,
+                city=city,
+                departure_time=departure_time,
+            )
+            midpoint = mp.get("midpoint", session.get("midpoint", {}))
+            search_radius_m = mp.get(
+                "suggested_search_radius_m",
+                session.get("search_radius_m", 3000),
+            )
+            midpoint_details = mp
+        else:
+            midpoint_details = session.get("geo_midpoint_details")
+            if not midpoint_details:
+                midpoint_details = compute_requested_midpoint(
+                    location_a["lng"], location_a["lat"],
+                    location_b["lng"], location_b["lat"],
+                    midpoint_mode="geo",
+                    prefer_a=prefer_a,
+                    prefer_b=prefer_b,
+                    city=city,
+                    departure_time=departure_time,
+                )
+            midpoint = midpoint_details.get("midpoint", {})
+            search_radius_m = midpoint_details.get(
+                "suggested_search_radius_m", 3000
+            )
+            mp = midpoint_details
+        print(
+            f"[Routes/重算] 实际方式={mp.get('method')} "
+            f"原因={mp.get('decision_reason') or mp.get('fallback_reason') or ''} "
+            f"{mp.get('note', '')}"
+        )
+
+        # ── 重算各 POI 路线 ──
+        route_geometries: dict = {}
         enriched = calculate_routes(
             pois_base,
-            session["location_a"], session["location_b"],
+            location_a, location_b,
             prefer_a, prefer_b,
-            session.get("city", "北京"),
+            city,
             departure_time,
+            geometry_cache=route_geometries,
         )
+
         session_update(session_id, {
             "prefer_a": prefer_a,
             "prefer_b": prefer_b,
             "departure_time": departure_time,
+            "midpoint": midpoint,
+            "midpoint_details": midpoint_details,
+            "geo_midpoint_details": (
+                midpoint_details if midpoint_mode == "geo"
+                else session.get("geo_midpoint_details", {})
+            ),
+            "midpoint_mode": midpoint_mode,
+            "search_radius_m": search_radius_m,
+            "route_geometries": route_geometries,
         })
         return jsonify({
             "success":        True,
@@ -707,12 +900,39 @@ def api_v2_routes():
             "pois":           enriched,
             "prefer_a":       prefer_a,
             "prefer_b":       prefer_b,
-            "midpoint":       session.get("midpoint", {}),
-            "search_radius_m": session.get("search_radius_m", 3000),
+            "midpoint":       midpoint,
+            "midpoint_details": midpoint_details,
+            "midpoint_mode":  midpoint_mode,
+            "search_radius_m": search_radius_m,
         })
     except Exception as e:
         import traceback; traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route(
+    "/api/v2/session/<session_id>/routes/<route_id>",
+    methods=["GET"],
+)
+def api_v2_cached_routes(session_id: str, route_id: str):
+    """读取单个推荐地点的缓存路线，不再次调用高德。"""
+    session = session_get(session_id)
+    if not session:
+        return jsonify({
+            "success": False,
+            "error": "会话已过期，请重新搜索",
+        }), 404
+    cached = session.get("route_geometries", {}).get(route_id)
+    if cached is None:
+        return jsonify({
+            "success": False,
+            "error": "未找到该地点的路线缓存",
+        }), 404
+    return jsonify({
+        "success": True,
+        "route_id": route_id,
+        **cached,
+    })
 
 
 @app.route("/api/v2/session/<session_id>", methods=["GET"])
