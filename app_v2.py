@@ -19,6 +19,8 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from openai import OpenAI
 
+from candidate_count import parse_candidate_count
+
 # 路线计算时每个 POI 调用 2 次 amap_get_best_route（A + B），
 # 每次内部还可能调多种交通方式。批量计算极易触发高德 3 次/秒限速。
 # 此间隔配合 amap_client._amap_get 的重试，双重保障。
@@ -636,13 +638,17 @@ def run_pipeline(
     prefer_a: str = "auto", prefer_b: str = "auto",
     departure_time: str | None = None,
     midpoint_mode: str = "geo",
+    candidate_count: int = 10,
 ) -> dict:
     """
     运行完整多 Agent 流水线。
     返回 session_id，前端可用此 ID 再次调用路线计算。
     """
+    candidate_count = parse_candidate_count(candidate_count)
+
     # ── Agent 1：规划 ──
     plan = agent_plan(user_query)
+    plan["top_n"] = candidate_count
 
     # ── Agent 2：搜索 ──
     search_ctx: dict = {"pois": []}
@@ -674,7 +680,7 @@ def run_pipeline(
     top_pois = filter_and_rank_pois(
         search_ctx["pois"],
         min_rating=plan.get("min_rating", 4.0),
-        top_n=plan.get("top_n", 20),
+        top_n=candidate_count,
     )
     top_pois = [
         {**poi, "route_id": f"r{index}"}
@@ -703,6 +709,7 @@ def run_pipeline(
         "city":           city,
         "query":          user_query,
         "plan":           plan,
+        "candidate_count": candidate_count,
         "midpoint":       midpoint,
         "midpoint_details": midpoint_details,
         "geo_midpoint_details": geo_midpoint_details,
@@ -720,6 +727,7 @@ def run_pipeline(
         "session_id":     session_id,
         "summary":        summary_text,
         "plan":           plan,
+        "candidate_count": candidate_count,
         "midpoint":       midpoint,
         "midpoint_details": midpoint_details,
         "midpoint_mode":  midpoint_mode,
@@ -764,6 +772,11 @@ def api_v2_search():
     departure_time = data.get("departure_time") or None
     midpoint_mode  = data.get("midpoint_mode", "geo")
 
+    try:
+        candidate_count = parse_candidate_count(data.get("candidate_count"))
+    except ValueError as error:
+        return jsonify({"success": False, "error": str(error)}), 400
+
     if not location_a or not location_b:
         return jsonify({"success": False, "error": "请提供两个地点的坐标"}), 400
     if not user_query:
@@ -782,6 +795,7 @@ def api_v2_search():
         result = run_pipeline(
             user_query, location_a, location_b,
             city, prefer_a, prefer_b, departure_time, midpoint_mode,
+            candidate_count,
         )
         return jsonify(result), (200 if result.get("success") else 500)
     except Exception as e:
@@ -949,6 +963,7 @@ def api_v2_session_info(session_id):
         "prefer_a":  s.get("prefer_a"),
         "prefer_b":  s.get("prefer_b"),
         "plan":      s.get("plan"),
+        "candidate_count": s.get("candidate_count", 10),
     })
 
 
