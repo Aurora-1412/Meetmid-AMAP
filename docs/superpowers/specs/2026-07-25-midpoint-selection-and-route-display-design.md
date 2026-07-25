@@ -2,10 +2,18 @@
 
 ## 背景
 
-当前实际启动入口是 `app/main.py`（FastAPI），`start.sh` 通过 Uvicorn
-启动该应用；`static/index.html` 是共用的单页前端。根目录的
-`app_v2.py` 是旧 Flask 入口，不是当前部署入口。本次实现以 FastAPI
-版本为准，不顺带重构或覆盖工作区内已有的未提交改动。
+当前本地开发和测试入口是根目录的 `app_v2.py`（Flask）；仓库中已提交的
+`start.sh` 执行 `python app_v2.py`，本地 `.env` 也提供该版本使用的
+`DEEPSEEK_API_KEY`。`static/index.html` 是共用的单页前端。
+
+未跟踪的 `app/` 目录是最后上线使用的 FastAPI/Runway 适配版本。它不读取
+`DEEPSEEK_API_KEY`，而是依赖上线环境提供的 `ai.properties` 或
+`AI_BASE_URL`、`AI_API_KEY`；当前本地既没有这些配置，也没有 FastAPI 和
+Uvicorn 依赖，因此不能在本地完成该版本的端到端 AI 搜索验证。
+
+本次先在 Flask 版本实现并完成本地自动化与浏览器验证，再把已验证的行为
+同步到 `app/` 上线版本。同步阶段只做框架和 AI 客户端差异所需的适配，
+不改变已经验收的业务行为，也不覆盖无关的未提交改动。
 
 当前搜索流程会计算一个中点，在中点周边搜索候选 POI，再为 A、B
 分别计算到每个 POI 的路线。前端目前只能高亮候选地点和查看路线摘要，
@@ -23,7 +31,8 @@
 
 ## 非目标
 
-- 不把根目录旧 Flask 入口改造成新的主入口。
+- 不把 `app/` 的 Runway AI 调用改回 DeepSeek。
+- 不为了本地运行 `app/` 而新增或伪造 Runway 凭据。
 - 不持久化 Session；继续使用现有进程内、1 小时 TTL 的缓存。
 - 不提供逐步导航、语音导航或路径拖拽编辑。
 - 不在首次搜索时渲染全部候选地点的路线。
@@ -215,7 +224,8 @@ GET /api/v2/session/{session_id}/routes/{route_id}
 
 ## 测试策略
 
-后端自动化测试使用项目现有 Python 测试区，覆盖：
+后端自动化测试以根目录 `app_v2.py` 和 `amap_client.py` 为对象，使用项目
+现有 Python 测试区，覆盖：
 
 1. `geo` 模式始终调用位置中点，并允许 A、B 任意合法独立方式。
 2. `transport` 只接受双方统一的 `transit` 或 `driving`。
@@ -225,7 +235,7 @@ GET /api/v2/session/{session_id}/routes/{route_id}
 6. Session 按 `route_id` 保存 A、B 路径，重算后替换旧缓存。
 7. 单地点路径接口处理成功、单侧缺失、未知 ID 和过期会话。
 
-前端通过浏览器手工验证：
+前端通过本地 Flask 入口做浏览器验证：
 
 1. 两种中点模式的控件切换和状态恢复。
 2. 交通中点只显示统一公交/驾车选择。
@@ -236,11 +246,21 @@ GET /api/v2/session/{session_id}/routes/{route_id}
 
 ## 兼容性与文件归属
 
-计划修改：
+本地实现和验证阶段修改：
 
-- `app/main.py`：请求校验、中点模式分流、路径 Session 缓存与读取接口。
-- `app/amap_client.py`：交通时间中点、四类路线轨迹提取与规范化。
+- `app_v2.py`：请求校验、中点模式分流、路径 Session 缓存与读取接口。
+- `amap_client.py`：交通时间中点、四类路线轨迹提取与规范化。
 - `static/index.html`：中点选择、统一交通方式、路径请求与覆盖物绘制。
 - `tests/`：与上述行为对应的后端自动化测试。
 
-不创建新的顶层源代码目录，不移动现有文件，不修改旧 Flask 入口。
+本地验证通过后，上线同步阶段再修改：
+
+- `app/main.py`：把已验证的请求校验、中点模式、Session 缓存和接口移植到
+  FastAPI 路由及线程池调用方式。
+- `app/amap_client.py`：同步已验证的中点和路径提取纯函数，同时保留现有
+  `_amap_get` 限速重试与 `app.config` 配置来源。
+
+上线版本至少执行不依赖 Runway 凭据的单元测试、模块导入和语法检查；AI
+端到端搜索留到具备 `ai.properties` 的上线环境验证。
+
+不创建新的顶层源代码目录，不移动现有文件。
