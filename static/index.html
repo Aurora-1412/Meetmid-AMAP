@@ -414,6 +414,39 @@
     }
     .search-input:focus { border-color: var(--primary); }
     .search-input::placeholder { color: var(--text2); }
+
+    /* ── Candidate Count ── */
+    .candidate-count-group {
+      margin-top: 12px;
+    }
+    .candidate-count-label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text2);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .candidate-count-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .candidate-count-input:focus {
+      border-color: var(--primary);
+    }
+    .candidate-count-hint {
+      margin-top: 5px;
+      color: var(--text2);
+      font-size: 11px;
+    }
+
     .btn-small {
       padding: 8px 12px;
       border-radius: 8px;
@@ -919,8 +952,8 @@
           </div>
         </div>
 
-        <div class="form-group">
-          <label class="form-label" for="candidateCountInput">
+        <div class="candidate-count-group">
+          <label class="candidate-count-label" for="candidateCountInput">
             📌 候选点数量
           </label>
           <input
@@ -931,9 +964,9 @@
             step="1"
             value="10"
             inputmode="numeric"
-            class="form-input"
+            class="candidate-count-input"
           >
-          <div class="form-hint">可输入 1–20，数量越少计算越快</div>
+          <div class="candidate-count-hint">可输入 1–20，数量越少计算越快</div>
         </div>
 
         <!-- 出发时间 -->
