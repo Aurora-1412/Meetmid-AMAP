@@ -6,6 +6,25 @@ from candidate_count import parse_candidate_count
 
 
 class CandidateCountTest(unittest.TestCase):
+    def test_deployment_entrypoint_uses_shared_candidate_contract(self):
+        source = (
+            __import__("pathlib").Path("app/main.py").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn(
+            "from candidate_count import parse_candidate_count",
+            source,
+        )
+        self.assertIn(
+            'candidate_count = parse_candidate_count(',
+            source,
+        )
+        self.assertIn(
+            '"candidate_count": candidate_count',
+            source,
+        )
+
     def test_default_and_boundaries(self):
         self.assertEqual(parse_candidate_count(), 10)
         self.assertEqual(parse_candidate_count(1), 1)

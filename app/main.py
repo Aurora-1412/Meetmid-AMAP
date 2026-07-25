@@ -38,6 +38,7 @@ from app.amap_client import (
 )
 from app.ai_client import chat_complete, chat_complete_with_tools
 from app.config import AMAP_JS_KEY, is_ai_enabled
+from candidate_count import parse_candidate_count
 
 logger = logging.getLogger(__name__)
 
@@ -616,9 +617,12 @@ def run_pipeline(
     prefer_a: str = "auto", prefer_b: str = "auto",
     departure_time: str | None = None,
     midpoint_mode: str = "geo",
+    candidate_count: int = 10,
 ) -> dict:
     """运行完整多 Agent 流水线，返回 session_id 及结果。"""
+    candidate_count = parse_candidate_count(candidate_count)
     plan = agent_plan(user_query)
+    plan["top_n"] = candidate_count
 
     search_ctx: dict = {"pois": []}
     search_result = agent_search(
@@ -648,7 +652,7 @@ def run_pipeline(
     top_pois = filter_and_rank_pois(
         search_ctx["pois"],
         min_rating=plan.get("min_rating", 4.0),
-        top_n=plan.get("top_n", 20),
+        top_n=candidate_count,
     )
     top_pois = [
         {**poi, "route_id": f"r{index}"}
@@ -674,6 +678,7 @@ def run_pipeline(
         "city":           city,
         "query":          user_query,
         "plan":           plan,
+        "candidate_count": candidate_count,
         "midpoint":       midpoint,
         "midpoint_details": midpoint_details,
         "geo_midpoint_details": geo_midpoint_details,
@@ -691,6 +696,7 @@ def run_pipeline(
         "session_id":      session_id,
         "summary":         summary_text,
         "plan":            plan,
+        "candidate_count": candidate_count,
         "midpoint":        midpoint,
         "midpoint_details": midpoint_details,
         "midpoint_mode":   midpoint_mode,
@@ -772,6 +778,14 @@ async def api_v2_search(request: Request):
     departure_time = data.get("departure_time") or None
     midpoint_mode  = data.get("midpoint_mode", "geo")
 
+    try:
+        candidate_count = parse_candidate_count(data.get("candidate_count"))
+    except ValueError as error:
+        return JSONResponse(
+            {"success": False, "error": str(error)},
+            status_code=400,
+        )
+
     if not location_a or not location_b:
         return JSONResponse({"success": False, "error": "请提供两个地点的坐标"}, status_code=400)
     if not user_query:
@@ -796,6 +810,7 @@ async def api_v2_search(request: Request):
             run_pipeline,
             user_query, location_a, location_b,
             city, prefer_a, prefer_b, departure_time, midpoint_mode,
+            candidate_count,
         )
         status = 200 if result.get("success") else 500
         return JSONResponse(result, status_code=status)
@@ -953,6 +968,7 @@ async def api_v2_session_info(session_id: str):
         "prefer_a":  s.get("prefer_a"),
         "prefer_b":  s.get("prefer_b"),
         "plan":      s.get("plan"),
+        "candidate_count": s.get("candidate_count", 10),
     }
 
 
