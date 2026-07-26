@@ -30,35 +30,38 @@
 - [ ] **Step 1: Write the failing test**
 
 ```python
-import re
+import asyncio
 import unittest
-from pathlib import Path
+
+import httpx
+
+from app.main import app
 
 
 class ProductionStaticAssetsTest(unittest.TestCase):
-    def test_static_mount_precedes_root_mount(self):
-        source = Path("app/main.py").read_text(encoding="utf-8")
-        asset_mount = (
-            'app.mount("/static", StaticFiles(directory="static"), '
-            'name="static-assets")'
-        )
-        root_mount = (
-            'app.mount("/", StaticFiles(directory="static", html=True), '
-            'name="static")'
-        )
-        self.assertIn(asset_mount, source)
-        self.assertLess(source.index(asset_mount), source.index(root_mount))
+    def test_frontend_script_urls_serve_javascript(self):
+        asyncio.run(self._assert_frontend_script_urls_serve_javascript())
 
-    def test_frontend_script_references_exist_in_package_source(self):
-        html = Path("static/index.html").read_text(encoding="utf-8")
-        scripts = re.findall(r'<script src="static/([^"]+)"></script>', html)
-        self.assertEqual(
-            scripts,
-            ["candidate-count.js", "midpoint-state.js", "map-routes.js"],
-        )
-        for script in scripts:
-            with self.subTest(script=script):
-                self.assertTrue(Path("static", script).is_file())
+    async def _assert_frontend_script_urls_serve_javascript(self):
+        expected_markers = {
+            "/static/candidate-count.js": "CandidateCount",
+            "/static/midpoint-state.js": "MidpointState",
+            "/static/map-routes.js": "MapRoutes",
+        }
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            for url, marker in expected_markers.items():
+                with self.subTest(url=url):
+                    response = await client.get(url)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn(
+                        "javascript",
+                        response.headers["content-type"],
+                    )
+                    self.assertIn(marker, response.text)
 ```
 
 - [ ] **Step 2: Run the test to verify RED**
@@ -66,10 +69,10 @@ class ProductionStaticAssetsTest(unittest.TestCase):
 Run:
 
 ```bash
-venv/bin/python -m unittest tests.test_production_static_assets
+<temporary-venv>/bin/python -m unittest tests.test_production_static_assets
 ```
 
-Expected: FAIL because `app/main.py` has no dedicated `/static` mount.
+Expected: FAIL because all three URLs return 404 through the root mount.
 
 - [ ] **Step 3: Add the minimal production mount**
 
@@ -88,8 +91,8 @@ app.mount(
 Run:
 
 ```bash
-venv/bin/python -m unittest tests.test_production_static_assets
-venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+<temporary-venv>/bin/python -m unittest tests.test_production_static_assets
+venv/bin/python -m unittest tests.test_candidate_count tests.test_deepseek_model tests.test_midpoint_logic tests.test_midpoint_selection tests.test_route_cache tests.test_route_geometry tests.test_route_preferences
 node --test tests/*.test.js
 ```
 

@@ -1094,4 +1094,9 @@ async def api_geocode_suggest(request: Request):
 # 静态文件挂载（必须放在所有 API 路由注册之后）
 # ──────────────────────────────────────────────────────
 
+app.mount(
+    "/static",
+    StaticFiles(directory="static"),
+    name="static-assets",
+)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
