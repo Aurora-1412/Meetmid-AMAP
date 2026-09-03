@@ -752,6 +752,7 @@ def get_config():
     return jsonify({
         "amap_key":     AMAP_JS_KEY,
         "has_amap_key": bool(AMAP_JS_KEY),
+        "ai_enabled":   bool(DEEPSEEK_API_KEY),
         "version":      "v2",
     })
 
@@ -798,9 +799,12 @@ def api_v2_search():
             candidate_count,
         )
         return jsonify(result), (200 if result.get("success") else 500)
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+    except Exception:
+        app.logger.exception("[api/v2/search] 流水线执行异常")
+        return jsonify({
+            "success": False,
+            "error": "服务内部错误，请稍后重试",
+        }), 500
 
 
 @app.route("/api/v2/routes", methods=["POST"])
@@ -838,11 +842,11 @@ def api_v2_routes():
     if midpoint_error:
         return jsonify({"success": False, "error": midpoint_error}), 400
 
-    location_a = session["location_a"]
-    location_b = session["location_b"]
-    city       = session.get("city", "北京")
-
     try:
+        location_a = session["location_a"]
+        location_b = session["location_b"]
+        city       = session.get("city", "北京")
+
         # 位置中点保持不变；交通中点随统一交通方式重算。
         if midpoint_mode == "transport":
             mp = compute_requested_midpoint(
@@ -919,9 +923,12 @@ def api_v2_routes():
             "midpoint_mode":  midpoint_mode,
             "search_radius_m": search_radius_m,
         })
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return jsonify({"success": False, "error": str(e)}), 500
+    except Exception:
+        app.logger.exception("[api/v2/routes] 路线重算异常")
+        return jsonify({
+            "success": False,
+            "error": "路线计算失败，请稍后重试",
+        }), 500
 
 
 @app.route(
@@ -1006,11 +1013,16 @@ def api_nearby_search():
     try:
         resp   = requests.get(url, params=params, timeout=8)
         result = resp.json()
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e), "pois": []})
+    except Exception:
+        app.logger.exception("[api/nearby-search] 高德 API 请求失败")
+        return jsonify({
+            "success": False,
+            "error": "地图服务请求失败",
+            "pois": [],
+        })
 
     if result.get("status") != "1":
-        return jsonify({"success": False, "error": result.get("info", "搜索失败"), "pois": []})
+        return jsonify({"success": False, "error": "搜索失败", "pois": []})
 
     pois = []
     for p in result.get("pois", []):
@@ -1059,8 +1071,9 @@ def api_geocode_suggest():
     try:
         resp   = requests.get(url, params=params, timeout=8)
         result = resp.json()
-    except Exception as e:
-        return jsonify({"tips": [], "error": str(e)})
+    except Exception:
+        app.logger.exception("[api/geocode-suggest] 高德 API 请求失败")
+        return jsonify({"tips": []})
 
     tips = []
     if result.get("status") == "1":
