@@ -129,6 +129,7 @@ def _format_route(route: dict) -> dict:
     success = route.get("success", True)
     return {
         "mode":             route.get("mode", "unknown"),
+        "strategy":         route.get("strategy", 0),
         "success":          success,
         "error":            route.get("error") if not success else None,
         "duration_text":    route.get("duration_text") if success else None,
@@ -152,6 +153,20 @@ def validate_midpoint_choice(
         )
         if not valid:
             return "选择交通中点时，双方必须同时选择公交地铁或同时选择驾车"
+    return None
+
+
+def validate_transit_strategy(
+    strategy, location_a: dict, location_b: dict,
+    prefer_a: str, prefer_b: str,
+) -> str | None:
+    """校验公交换乘策略；地铁图模式需要双方地点都来自搜索候选。"""
+    if isinstance(strategy, bool) or not isinstance(strategy, int) or not 0 <= strategy <= 8:
+        return "公交换乘策略必须是 0 到 8 之间的整数"
+    if strategy == 6:
+        for prefer, location in ((prefer_a, location_a), (prefer_b, location_b)):
+            if prefer == "transit" and not location.get("poi_id"):
+                return "使用地铁图模式时必须从搜索候选中选择地点"
     return None
 
 
@@ -462,6 +477,7 @@ def calculate_routes(
     departure_time: str | None = None,
     sort_weights: dict | None = None,
     geometry_cache: dict | None = None,
+    transit_strategy: int = 0,
 ) -> list:
     """对每个 POI 分别计算从 A、从 B 出发的最优路线，并综合排名。"""
     w = sort_weights or {}
@@ -489,6 +505,7 @@ def calculate_routes(
             location_a["lng"], location_a["lat"],
             poi["lng"], poi["lat"],
             city, prefer_a, departure_time,
+            transit_strategy, location_a.get("poi_id"), poi.get("id"),
         )
         p["transport_from_a"] = _format_route(route_a)
 
@@ -496,6 +513,7 @@ def calculate_routes(
             location_b["lng"], location_b["lat"],
             poi["lng"], poi["lat"],
             city, prefer_b, departure_time,
+            transit_strategy, location_b.get("poi_id"), poi.get("id"),
         )
         p["transport_from_b"] = _format_route(route_b)
 
@@ -618,6 +636,7 @@ def run_pipeline(
     departure_time: str | None = None,
     midpoint_mode: str = "geo",
     candidate_count: int = 10,
+    transit_strategy: int = 0,
 ) -> dict:
     """运行完整多 Agent 流水线，返回 session_id 及结果。"""
     candidate_count = parse_candidate_count(candidate_count)
@@ -666,6 +685,7 @@ def run_pipeline(
         prefer_a, prefer_b, city, departure_time,
         sort_weights=plan.get("sort_weights"),
         geometry_cache=route_geometries,
+        transit_strategy=transit_strategy,
     )
 
     summary_text = agent_summarize(
@@ -688,6 +708,7 @@ def run_pipeline(
         "departure_time": departure_time,
         "prefer_a":       prefer_a,
         "prefer_b":       prefer_b,
+        "transit_strategy": transit_strategy,
         "route_geometries": route_geometries,
     })
 
@@ -704,6 +725,7 @@ def run_pipeline(
         "pois":            enriched,
         "prefer_a":        prefer_a,
         "prefer_b":        prefer_b,
+        "transit_strategy": transit_strategy,
     }
 
 
@@ -777,6 +799,7 @@ async def api_v2_search(request: Request):
     prefer_b       = data.get("prefer_b", "auto")
     departure_time = data.get("departure_time") or None
     midpoint_mode  = data.get("midpoint_mode", "geo")
+    transit_strategy = data.get("transit_strategy", 0)
 
     try:
         candidate_count = parse_candidate_count(data.get("candidate_count"))
@@ -798,6 +821,14 @@ async def api_v2_search(request: Request):
             {"success": False, "error": midpoint_error},
             status_code=400,
         )
+    strategy_error = validate_transit_strategy(
+        transit_strategy, location_a, location_b, prefer_a, prefer_b
+    )
+    if strategy_error:
+        return JSONResponse(
+            {"success": False, "error": strategy_error},
+            status_code=400,
+        )
     if not AMAP_KEY:
         return JSONResponse({"success": False, "error": "高德地图 API Key 未配置"}, status_code=500)
     if not is_ai_enabled():
@@ -810,7 +841,7 @@ async def api_v2_search(request: Request):
             run_pipeline,
             user_query, location_a, location_b,
             city, prefer_a, prefer_b, departure_time, midpoint_mode,
-            candidate_count,
+            candidate_count, transit_strategy,
         )
         status = 200 if result.get("success") else 500
         return JSONResponse(result, status_code=status)
@@ -844,6 +875,9 @@ async def api_v2_routes(request: Request):
 
     if departure_time is None:
         departure_time = session.get("departure_time")
+    transit_strategy = data.get(
+        "transit_strategy", session.get("transit_strategy", 0)
+    )
     midpoint_mode = data.get(
         "midpoint_mode", session.get("midpoint_mode", "geo")
     )
@@ -860,6 +894,15 @@ async def api_v2_routes(request: Request):
         location_a = session["location_a"]
         location_b = session["location_b"]
         city = session.get("city", "北京")
+
+        strategy_error = validate_transit_strategy(
+            transit_strategy, location_a, location_b, prefer_a, prefer_b
+        )
+        if strategy_error:
+            return JSONResponse(
+                {"success": False, "error": strategy_error},
+                status_code=400,
+            )
         if midpoint_mode == "transport":
             midpoint_details = await asyncio.to_thread(
                 compute_requested_midpoint,
@@ -905,10 +948,12 @@ async def api_v2_routes(request: Request):
             city,
             departure_time,
             geometry_cache=route_geometries,
+            transit_strategy=transit_strategy,
         )
         session_update(session_id, {
             "prefer_a": prefer_a,
             "prefer_b": prefer_b,
+            "transit_strategy": transit_strategy,
             "departure_time": departure_time,
             "midpoint": midpoint,
             "midpoint_details": midpoint_details,
@@ -1079,6 +1124,7 @@ async def api_geocode_suggest(request: Request):
                 lng_s, lat_s = location.split(",")
                 tips.append({
                     "name":     tip.get("name", ""),
+                    "poi_id":   tip.get("id", ""),
                     "district": tip.get("district", ""),
                     "address":  tip.get("address", "") if isinstance(tip.get("address"), str) else "",
                     "lng":      float(lng_s),

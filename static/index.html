@@ -981,6 +981,15 @@
         <div id="timeHint" style="font-size:11px;color:var(--text2);margin-top:5px;">
           不填默认工作日中午 12:00（避免末班车问题）
         </div>
+
+        <!-- 公交策略 -->
+        <div class="card-title" style="margin-top:12px;margin-bottom:6px;">🚇 公交策略</div>
+        <select id="transitStrategySelect" onchange="setTransitStrategy(this)"
+          style="width:100%;padding:7px 10px;background:var(--surface);border:1px solid var(--border);
+                 border-radius:8px;color:var(--text);font-size:13px;outline:none;cursor:pointer;"></select>
+        <div style="font-size:11px;color:var(--text2);margin-top:5px;">
+          仅对公交/地铁路线生效；地铁图模式需双方地点来自搜索候选
+        </div>
       </div>
 
       <!-- Submit -->
@@ -1165,6 +1174,11 @@ const locationData = { A: null, B: null };
 const midpointState = MidpointState.create();
 let preferA = 'auto';           // A 的出行方式
 let preferB = 'auto';           // B 的出行方式
+let transitStrategy = 0;        // 公交换乘策略 0-8
+const TRANSIT_STRATEGIES = [
+  [0, '推荐路线'], [1, '最经济'], [2, '最少换乘'], [3, '最少步行'],
+  [4, '最舒适'], [5, '不乘地铁'], [6, '地铁图'], [7, '地铁优先'], [8, '时间短'],
+];
 let departureTime = null;       // 出发时间 "HH:MM" 或 null
 let searchDebounceTimer = null; // 输入防抖
 let currentSessionId = null;    // 当前搜索 Session ID（用于路线重算）
@@ -1182,6 +1196,10 @@ const STEP_INTERVALS = [0, 3000, 7000, 12000, 17000];
 // ─────────────────────────────────────────────
 async function init() {
   syncMidpointControls();
+  document.getElementById('transitStrategySelect').innerHTML =
+    TRANSIT_STRATEGIES.map(
+      ([value, label]) => `<option value="${value}">${value} · ${label}</option>`
+    ).join('');
   // 获取后端配置
   try {
     const resp = await fetch('api/config');
@@ -1251,7 +1269,7 @@ function setupAutoComplete(inputId, which) {
   ac.on('select', (e) => {
     const poi = e.poi;
     if (poi && poi.location) {
-      setLocation(which, poi.location.lng, poi.location.lat, poi.name);
+      setLocation(which, poi.location.lng, poi.location.lat, poi.name, poi.id);
     }
   });
 }
@@ -1356,6 +1374,7 @@ async function doSearchSuggest(which, input) {
       item.dataset.lng  = t.lng;
       item.dataset.lat  = t.lat;
       item.dataset.name = t.name;
+      item.dataset.poiId = t.poi_id || '';
       item.innerHTML = `
         <div class="di-name">${t.name}</div>
         <div class="di-addr">${t.district || ''}${t.address || ''}</div>
@@ -1364,7 +1383,7 @@ async function doSearchSuggest(which, input) {
         // 用 mousedown 而非 click，在 document click 关闭下拉之前先触发
         e.preventDefault();
         e.stopPropagation();
-        selectDropdown(which, parseFloat(item.dataset.lng), parseFloat(item.dataset.lat), item.dataset.name);
+        selectDropdown(which, parseFloat(item.dataset.lng), parseFloat(item.dataset.lat), item.dataset.name, item.dataset.poiId);
       });
       dropdown.appendChild(item);
     });
@@ -1375,10 +1394,10 @@ async function doSearchSuggest(which, input) {
   }
 }
 
-function selectDropdown(which, lng, lat, name) {
+function selectDropdown(which, lng, lat, name, poiId) {
   document.getElementById(`dropdown${which}`).classList.remove('show');
   document.getElementById(`search${which}`).value = name;
-  setLocation(which, lng, lat, name);
+  setLocation(which, lng, lat, name, poiId);
 }
 
 async function searchLocation(which) {
@@ -1435,6 +1454,14 @@ function setMidpointMode(mode) {
 function setSharedTransport(btn) {
   midpointState.setTransportPreference(btn.dataset.mode);
   syncMidpointControls();
+}
+
+function setTransitStrategy(select) {
+  transitStrategy = Number(select.value);
+}
+
+function transitStrategyName(value) {
+  return TRANSIT_STRATEGIES.find(([strategy]) => strategy === Number(value))?.[1] || '推荐路线';
 }
 
 function syncMidpointControls() {
@@ -1585,6 +1612,7 @@ async function recalcRoutes() {
         session_id: currentSessionId,
         ...midpointPayload,
         departure_time: departureTime,
+        transit_strategy: transitStrategy,
       }),
     });
     const result = await resp.json();
@@ -1616,8 +1644,8 @@ async function recalcRoutes() {
 // ─────────────────────────────────────────────
 // 设置地点
 // ─────────────────────────────────────────────
-function setLocation(which, lng, lat, name) {
-  locationData[which] = { lng, lat, name };
+function setLocation(which, lng, lat, name, poiId = null) {
+  locationData[which] = { lng, lat, name, poi_id: poiId || null };
 
   const nameEl = document.getElementById(`loc${which}Name`);
   const coordEl = document.getElementById(`loc${which}Coords`);
@@ -1821,6 +1849,7 @@ async function doSearch() {
         ...midpointPayload,
         departure_time: departureTime,
         candidate_count: countResult.value,
+        transit_strategy: transitStrategy,
       }),
     });
 
@@ -1946,7 +1975,8 @@ function formatTransport(trans) {
   }
   return {
     timeHtml: trans.duration_text || '<span style="color:var(--text2)">暂未查询到交通信息</span>',
-    detail: trans.line_summary || trans.distance_text || '',
+    detail: (trans.line_summary || trans.distance_text || '')
+      + (trans.mode === 'transit' ? ` · ${transitStrategyName(trans.strategy)}` : ''),
   };
 }
 
