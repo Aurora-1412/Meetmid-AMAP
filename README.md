@@ -79,7 +79,7 @@ AMAP_JS_KEY=你的高德JS API Key
 - DeepSeek：[platform.deepseek.com](https://platform.deepseek.com)
 - 高德地图：[console.amap.com](https://console.amap.com)
   - `AMAP_KEY`：创建「Web 服务」类型应用
-  - `AMAP_JS_KEY`：创建「Web 端（JS API）」类型应用，需在控制台配置允许的域名白名单（加入 `localhost` 和 `127.0.0.1`）
+  - `AMAP_JS_KEY`：创建「Web 端（JS API）」类型应用
 
 ### 2. 启动服务
 
@@ -207,7 +207,7 @@ A 和 B 可以分别选择不同的出行方式：
 后端服务是否正常运行，检查 `AMAP_KEY` 是否配置正确。
 
 **Q：地图不显示？**
-检查 `AMAP_JS_KEY` 是否配置，以及高德控制台是否将 `localhost` 加入域名白名单。
+检查 `AMAP_JS_KEY` 是否配置，以及高德控制台域名白名单是否为空。
 
 **Q：搜索结果路线显示"计算中..."？**
 高德路线 API 限制（免费版 QPS 较低），结果较多时部分路线可能超时。可以减少显示数量（下拉选 5 个或 10 个）后重新搜索。
