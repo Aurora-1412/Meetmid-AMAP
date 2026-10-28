@@ -17,7 +17,7 @@ import re
 import requests
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from openai import OpenAI
+from openai import AuthenticationError, OpenAI
 
 from candidate_count import parse_candidate_count
 
@@ -826,6 +826,12 @@ def api_v2_search():
             candidate_count, transit_strategy,
         )
         return jsonify(result), (200 if result.get("success") else 500)
+    except AuthenticationError:
+        app.logger.exception("[api/v2/search] AI 服务鉴权失败")
+        return jsonify({
+            "success": False,
+            "error": "AI 服务鉴权失败：DeepSeek API Key 无效或已过期，请检查 .env 中的 DEEPSEEK_API_KEY",
+        }), 500
     except Exception:
         app.logger.exception("[api/v2/search] 流水线执行异常")
         return jsonify({
