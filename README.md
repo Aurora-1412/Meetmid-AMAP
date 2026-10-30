@@ -79,7 +79,7 @@ AMAP_JS_KEY=你的高德JS API Key
 - DeepSeek：[platform.deepseek.com](https://platform.deepseek.com)
 - 高德地图：[console.amap.com](https://console.amap.com)
   - `AMAP_KEY`：创建「Web 服务」类型应用
-  - `AMAP_JS_KEY`：创建「Web 端（JS API）」类型应用，需在控制台配置允许的域名白名单（加入 `localhost` 和 `127.0.0.1`）
+  - `AMAP_JS_KEY`：创建「Web 端（JS API）」类型应用
 
 ### 2. 启动服务
 
@@ -128,6 +128,8 @@ A 和 B 可以分别选择不同的出行方式：
 - 🚲 骑行
 - 🚗 驾车
 - 🚶 步行
+
+选择「公交策略」可指定高德 V5 换乘策略：推荐路线、最经济、最少换乘、最少步行、最舒适、不乘地铁、地铁图、地铁优先、时间短，仅对公交/地铁出行生效。地铁图模式要求起终点都有高德 POI ID，因此双方地点需从搜索下拉候选中选择，地图点选时不可用。
 
 ### 查看结果
 
@@ -178,7 +180,8 @@ A 和 B 可以分别选择不同的出行方式：
   "city": "北京",
   "prefer_a": "transit",
   "prefer_b": "auto",
-  "departure_time": "09:30"
+  "departure_time": "09:30",
+  "transit_strategy": 0
 }
 ```
 
@@ -189,9 +192,12 @@ A 和 B 可以分别选择不同的出行方式：
   "session_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   "prefer_a": "cycling",
   "prefer_b": "driving",
-  "departure_time": null
+  "departure_time": null,
+  "transit_strategy": 0
 }
 ```
+
+`transit_strategy` 省略时沿用搜索阶段保存的值（默认 0）。
 
 ---
 
@@ -201,7 +207,7 @@ A 和 B 可以分别选择不同的出行方式：
 后端服务是否正常运行，检查 `AMAP_KEY` 是否配置正确。
 
 **Q：地图不显示？**
-检查 `AMAP_JS_KEY` 是否配置，以及高德控制台是否将 `localhost` 加入域名白名单。
+检查 `AMAP_JS_KEY` 是否配置，以及高德控制台域名白名单是否为空。
 
 **Q：搜索结果路线显示"计算中..."？**
 高德路线 API 限制（免费版 QPS 较低），结果较多时部分路线可能超时。可以减少显示数量（下拉选 5 个或 10 个）后重新搜索。

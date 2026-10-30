@@ -17,7 +17,7 @@ import re
 import requests
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from openai import OpenAI
+from openai import AuthenticationError, OpenAI
 
 from candidate_count import parse_candidate_count
 
@@ -122,6 +122,7 @@ def _format_route(route: dict) -> dict:
     # 查询失败时保留 error 字段，duration_text 置为 None（前端据此显示友好提示）
     return {
         "mode":             route.get("mode", "unknown"),
+        "strategy":         route.get("strategy", 0),
         "success":          success,
         "error":            route.get("error") if not success else None,
         "duration_text":    route.get("duration_text") if success else None,
@@ -145,6 +146,20 @@ def validate_midpoint_choice(
         )
         if not valid:
             return "选择交通中点时，双方必须同时选择公交地铁或同时选择驾车"
+    return None
+
+
+def validate_transit_strategy(
+    strategy, location_a: dict, location_b: dict,
+    prefer_a: str, prefer_b: str,
+) -> str | None:
+    """校验公交换乘策略；地铁图模式需要双方地点都来自搜索候选。"""
+    if isinstance(strategy, bool) or not isinstance(strategy, int) or not 0 <= strategy <= 8:
+        return "公交换乘策略必须是 0 到 8 之间的整数"
+    if strategy == 6:
+        for prefer, location in ((prefer_a, location_a), (prefer_b, location_b)):
+            if prefer == "transit" and not location.get("poi_id"):
+                return "使用地铁图模式时必须从搜索候选中选择地点"
     return None
 
 
@@ -463,6 +478,7 @@ def calculate_routes(
     prefer_a: str = "auto", prefer_b: str = "auto",
     city: str = "北京",
     departure_time: str | None = None,
+    transit_strategy: int = 0,
     sort_weights: dict | None = None,
     geometry_cache: dict | None = None,
 ) -> list:
@@ -496,6 +512,7 @@ def calculate_routes(
             location_a["lng"], location_a["lat"],
             poi["lng"], poi["lat"],
             city, prefer_a, departure_time,
+            transit_strategy, location_a.get("poi_id"), poi.get("id"),
         )
         p["transport_from_a"] = _format_route(route_a)
 
@@ -503,6 +520,7 @@ def calculate_routes(
             location_b["lng"], location_b["lat"],
             poi["lng"], poi["lat"],
             city, prefer_b, departure_time,
+            transit_strategy, location_b.get("poi_id"), poi.get("id"),
         )
         p["transport_from_b"] = _format_route(route_b)
 
@@ -639,6 +657,7 @@ def run_pipeline(
     departure_time: str | None = None,
     midpoint_mode: str = "geo",
     candidate_count: int = 10,
+    transit_strategy: int = 0,
 ) -> dict:
     """
     运行完整多 Agent 流水线。
@@ -693,6 +712,7 @@ def run_pipeline(
     enriched = calculate_routes(
         top_pois, location_a, location_b,
         prefer_a, prefer_b, city, departure_time,
+        transit_strategy=transit_strategy,
         sort_weights=plan.get("sort_weights"),
         geometry_cache=route_geometries,
     )
@@ -719,6 +739,7 @@ def run_pipeline(
         "departure_time": departure_time,
         "prefer_a":       prefer_a,
         "prefer_b":       prefer_b,
+        "transit_strategy": transit_strategy,
         "route_geometries": route_geometries,
     })
 
@@ -772,6 +793,7 @@ def api_v2_search():
     prefer_b       = data.get("prefer_b", "auto")
     departure_time = data.get("departure_time") or None
     midpoint_mode  = data.get("midpoint_mode", "geo")
+    transit_strategy = data.get("transit_strategy", 0)
 
     try:
         candidate_count = parse_candidate_count(data.get("candidate_count"))
@@ -787,6 +809,11 @@ def api_v2_search():
     )
     if midpoint_error:
         return jsonify({"success": False, "error": midpoint_error}), 400
+    strategy_error = validate_transit_strategy(
+        transit_strategy, location_a, location_b, prefer_a, prefer_b
+    )
+    if strategy_error:
+        return jsonify({"success": False, "error": strategy_error}), 400
     if not AMAP_KEY:
         return jsonify({"success": False, "error": "高德地图 API Key 未配置"}), 500
     if not DEEPSEEK_API_KEY:
@@ -796,9 +823,15 @@ def api_v2_search():
         result = run_pipeline(
             user_query, location_a, location_b,
             city, prefer_a, prefer_b, departure_time, midpoint_mode,
-            candidate_count,
+            candidate_count, transit_strategy,
         )
         return jsonify(result), (200 if result.get("success") else 500)
+    except AuthenticationError:
+        app.logger.exception("[api/v2/search] AI 服务鉴权失败")
+        return jsonify({
+            "success": False,
+            "error": "AI 服务鉴权失败：DeepSeek API Key 无效或已过期，请检查 .env 中的 DEEPSEEK_API_KEY",
+        }), 500
     except Exception:
         app.logger.exception("[api/v2/search] 流水线执行异常")
         return jsonify({
@@ -831,6 +864,10 @@ def api_v2_routes():
     if not pois_base:
         return jsonify({"success": False, "error": "缓存的搜索结果为空"}), 400
 
+    transit_strategy = data.get(
+        "transit_strategy", session.get("transit_strategy", 0)
+    )
+
     if departure_time is None:
         departure_time = session.get("departure_time")
     midpoint_mode = data.get(
@@ -846,6 +883,12 @@ def api_v2_routes():
         location_a = session["location_a"]
         location_b = session["location_b"]
         city       = session.get("city", "北京")
+
+        strategy_error = validate_transit_strategy(
+            transit_strategy, location_a, location_b, prefer_a, prefer_b
+        )
+        if strategy_error:
+            return jsonify({"success": False, "error": strategy_error}), 400
 
         # 位置中点保持不变；交通中点随统一交通方式重算。
         if midpoint_mode == "transport":
@@ -895,12 +938,14 @@ def api_v2_routes():
             prefer_a, prefer_b,
             city,
             departure_time,
+            transit_strategy=transit_strategy,
             geometry_cache=route_geometries,
         )
 
         session_update(session_id, {
             "prefer_a": prefer_a,
             "prefer_b": prefer_b,
+            "transit_strategy": transit_strategy,
             "departure_time": departure_time,
             "midpoint": midpoint,
             "midpoint_details": midpoint_details,
@@ -1085,6 +1130,7 @@ def api_geocode_suggest():
                 lng_s, lat_s = location.split(",")
                 tips.append({
                     "name":     tip.get("name", ""),
+                    "poi_id":   tip.get("id", ""),
                     "district": tip.get("district", ""),
                     "address":  tip.get("address", "") if isinstance(tip.get("address"), str) else "",
                     "lng":      float(lng_s),
